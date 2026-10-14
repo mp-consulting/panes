@@ -6,6 +6,8 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-14
+
 ### Changed
 
 - The bundle identifier is now `com.mpconsulting.Panes`. macOS treats this as a new app: allow it
@@ -24,6 +26,7 @@ All notable changes to Panes are listed here. The format follows
 - The grid panel no longer shows a button for a preset whose area lies outside its grid; Settings
   already flagged it and its shortcut was already off.
 - Shortcuts on the keypad's + key can be recorded and saved; they used to be rejected when read back.
+- No crash when a hotkey arrives with no display connected; Panes beeps instead.
 
 ## [1.0.0] - 2026-10-14
 
@@ -44,5 +47,6 @@ All notable changes to Panes are listed here. The format follows
 - Configuration saved as JSON in `~/Library/Application Support/Panes/config.json`.
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
 
-[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/mp-consulting/panes/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mp-consulting/panes/releases/tag/v1.0.0
