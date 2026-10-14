@@ -1,0 +1,28 @@
+name: CI
+
+# Tests PanesCore and builds the app on every push to main and every pull request. The release
+# workflow tests again before it signs anything.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # macOS 26 and its Xcode: the app uses the Liquid Glass APIs and Swift 6.2.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Test
+        run: swift test
+
+      - name: Build app
+        run: swift build -c release --arch arm64

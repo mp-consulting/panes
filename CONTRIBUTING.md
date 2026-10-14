@@ -46,7 +46,8 @@ an iCloud-synced folder, `codesign` rejects the Finder metadata iCloud adds. The
 ## Pull requests
 
 - One change per pull request, with a description of what it changes and how you tested it.
-- `swift test` must pass. Include a screenshot or short recording for UI changes.
+- `swift test` must pass; CI runs it, with a release build, on every pull request. Include a
+  screenshot or short recording for UI changes.
 - Write commit messages in the imperative ("Cancel grid drag on Escape"), with a body when the reason
   isn't obvious.
 
