@@ -101,9 +101,16 @@ extension KeyCombo {
     public init(parsing string: String, layout: KeyLayout) throws(KeyComboError) {
         let parts = string.lowercased().split(separator: "+", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        // "ctrl++" means ctrl and the "+" key: an empty last part after a "+" is the plus key.
+        // A trailing "+" belongs to the key: "ctrl++" is ctrl and the "+" key, "ctrl+keypad+" is ctrl
+        // and the keypad's "+".
         var tokens = parts
-        if string.hasSuffix("++") { tokens = Array(parts.dropLast(2)) + ["+"] }
+        if tokens.count > 2, tokens.last == "" {
+            let key = tokens[tokens.count - 2] + "+"
+            if key == "+" || Self.namedKeys[key] != nil {
+                tokens.removeLast()
+                tokens[tokens.count - 1] = key
+            }
+        }
         guard let keyName = tokens.last, !keyName.isEmpty else { throw .empty }
 
         var modifiers: Modifiers = []

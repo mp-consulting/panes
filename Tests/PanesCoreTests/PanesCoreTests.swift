@@ -54,7 +54,7 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
     }
 
     @Test func roundTripsThroughConfigString() throws {
-        for string in ["ctrl+opt+cmd+w", "shift+cmd+f12", "ctrl+opt+space", "ctrl+keycode99"] {
+        for string in ["ctrl+opt+cmd+w", "shift+cmd+f12", "ctrl+opt+space", "ctrl+keycode99", "ctrl+keypad+"] {
             let combo = try KeyCombo(parsing: string, layout: azerty)
             #expect(try KeyCombo(parsing: combo.configString(layout: azerty), layout: azerty) == combo)
         }
@@ -70,6 +70,7 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
         #expect(throws: KeyComboError.unknownKey("ü")) { try KeyCombo(parsing: "cmd+ü", layout: .usANSI) }
         #expect(throws: KeyComboError.noModifier("left")) { try KeyCombo(parsing: "left", layout: .usANSI) }
         #expect(throws: KeyComboError.empty) { try KeyCombo(parsing: "cmd+", layout: .usANSI) }
+        #expect(throws: KeyComboError.unknownKey("+")) { try KeyCombo(parsing: "ctrl++", layout: .usANSI) }
     }
 
     @Test func cocoaFlagsFromDivvy() {
