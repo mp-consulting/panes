@@ -31,6 +31,9 @@ presets.
 - **Keyboard-layout aware.** Shortcuts follow the active layout, so a Divvy shortcut stored as the
   QWERTY "Z" key shows as ⌃⌥⌘W on AZERTY, which is the key it really is.
 - **Multiple screens.** Windows are placed on the screen they're mostly on, inside the menu bar and Dock.
+  With several screens, the grid panel shows them in their arrangement: click one to place the window
+  there instead. Optionally, pressing a preset's shortcut again sends the window to the same area of
+  the next screen.
 - **Updates itself.** Release builds check GitHub once a day and install a new version in one click,
   after checking its signature.
 - Menu-bar only, with no Dock icon except while Settings is open. Optionally opens at login.
@@ -82,6 +85,7 @@ list once and allow the new one.
 | --- | --- |
 | Open the grid | Click the menu-bar icon, or press the grid hotkey (set in Settings → General) |
 | Place the window | Drag across the grid and release, or click a preset button |
+| Place it on another screen | In the grid, click that screen in the miniature at the top right first. With **Repeat a shortcut for the next screen** on, press a preset's shortcut again |
 | Apply a preset | Press its shortcut, with the window to place in front |
 | Cancel a drag | Escape before releasing the mouse: the window stays put and the grid closes |
 | Close the grid | Escape, the hotkey again, or click elsewhere |
@@ -123,6 +127,7 @@ Panes before editing it by hand. If the file can't be read at launch, Panes rena
   "gridHotkey": "ctrl+opt+cmd+space",
   "showResizePreview": true,
   "checkForUpdates": true,
+  "cycleScreens": false,
   "presets": [
     {
       "name": "Left",
@@ -144,14 +149,16 @@ Panes before editing it by hand. If the file can't be read at launch, Panes rena
   empty `key` makes a button-only preset.
 - `id` and `enabled` can be left out; Panes fills them in.
 - `checkForUpdates` turns the daily update check on or off. It's on when left out.
+- `cycleScreens`: when on, pressing a preset's shortcut again, with the window still where that
+  shortcut put it, moves the window to the same area of the next screen, left to right, wrapping round.
+  It's off when left out.
 
 ## Divvy settings that are not carried over
 
-Divvy's resize preview is reproduced. These other Divvy options are not:
+Divvy's resize preview and monitor cycling are reproduced. These other Divvy options are not:
 
 - **Margins** between windows and around the screen edges.
 - **Animations** when windows move.
-- **Monitor cycling**: pressing a shortcut again to send the window to the next screen.
 - Divvy's hidden `enableAcceleration` preference needs no counterpart. Despite its name, it only
   records that Divvy has been launched before, for its licence prompt.
 

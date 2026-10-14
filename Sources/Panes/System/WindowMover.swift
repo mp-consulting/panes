@@ -25,14 +25,17 @@ import PanesCore
         }
     }
 
-    static func move(windowOf app: NSRunningApplication, to selection: GridSelection) throws(Failure) {
+    /// Fills `selection` of `screen`, or of the screen the window is mostly on when `nil`, with the
+    /// focused window of `app`, and returns the frame the window ended up with.
+    @discardableResult
+    static func move(windowOf app: NSRunningApplication, to selection: GridSelection, on screen: NSScreen? = nil) throws(Failure) -> CGRect {
         guard isTrusted else { throw .notTrusted }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         guard let window: AXUIElement = attribute(appElement, kAXFocusedWindowAttribute),
               let current = frame(of: window)
         else { throw .noWindow }
 
-        guard let area = visibleArea(for: current) else { throw .noScreen }
+        guard let area = screen.map(visibleArea(of:)) ?? visibleArea(for: current) else { throw .noScreen }
         let target = selection.frame(in: area)
 
         // With enhanced UI on (set by assistive apps, and by some apps on themselves), every setter
@@ -47,21 +50,39 @@ import PanesCore
         set(window, kAXSizeAttribute, size: target.size)
         set(window, kAXPositionAttribute, point: target.origin)
         set(window, kAXSizeAttribute, size: target.size)
+        return frame(of: window) ?? target
     }
 
     /// The visible frame (menu bar and Dock excluded), in Accessibility coordinates, of the screen
     /// holding most of `windowFrame`.
     static func visibleArea(for windowFrame: CGRect) -> CGRect? {
-        screen(for: windowFrame).map { flipped($0.visibleFrame, primaryScreenHeight: primaryHeight) }
+        screen(for: windowFrame).map(visibleArea(of:))
+    }
+
+    /// `screen`'s visible frame (menu bar and Dock excluded), in Accessibility coordinates.
+    static func visibleArea(of screen: NSScreen) -> CGRect {
+        flipped(screen.visibleFrame, primaryScreenHeight: primaryHeight)
+    }
+
+    /// `screen`'s whole frame, in Accessibility coordinates.
+    static func frame(of screen: NSScreen) -> CGRect {
+        flipped(screen.frame, primaryScreenHeight: primaryHeight)
     }
 
     static func screen(for windowFrame: CGRect) -> NSScreen? {
         let screens = NSScreen.screens
-        let best = screens.max { a, b in
-            overlap(windowFrame, a) < overlap(windowFrame, b)
+        if let index = ScreenLayout.index(holdingMostOf: windowFrame, in: screens.map(frame(of:))) {
+            return screens[index]
         }
-        if let best, overlap(windowFrame, best) > 0 { return best }
         return NSScreen.main ?? screens.first
+    }
+
+    /// The screen after the one holding most of `windowFrame`, left to right, wrapping round.
+    static func screen(after windowFrame: CGRect) -> NSScreen? {
+        let screens = NSScreen.screens
+        let frames = screens.map(frame(of:))
+        guard let current = ScreenLayout.index(holdingMostOf: windowFrame, in: frames) else { return nil }
+        return screens[ScreenLayout.index(after: current, in: frames)]
     }
 
     /// The frame, in Accessibility coordinates, of `app`'s focused window.
@@ -75,12 +96,6 @@ import PanesCore
     static var primaryScreenHeight: CGFloat { primaryHeight }
 
     private static var primaryHeight: CGFloat { NSScreen.screens.first?.frame.height ?? 0 }
-
-    private static func overlap(_ axFrame: CGRect, _ screen: NSScreen) -> CGFloat {
-        let screenFrame = flipped(screen.frame, primaryScreenHeight: primaryHeight)
-        let intersection = axFrame.intersection(screenFrame)
-        return intersection.isNull ? 0 : intersection.width * intersection.height
-    }
 
     private static func frame(of window: AXUIElement) -> CGRect? {
         guard let position: AXValue = attribute(window, kAXPositionAttribute),

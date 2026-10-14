@@ -11,7 +11,7 @@ import SwiftUI
     private lazy var gridPanel = GridPanelController(
         store: store,
         updater: updater,
-        apply: { [weak self] app, selection in self?.move(app, to: selection) },
+        apply: { [weak self] app, selection, screen in self?.move(app, to: selection, on: screen) },
         openSettings: { [weak self] in self?.showSettings() }
     )
 
@@ -101,20 +101,33 @@ import SwiftUI
 
     // MARK: Actions
 
+    /// Where the last preset shortcut put a window, for `cycleScreens`.
+    private var lastPlacement: Placement?
+
     private func moveFrontmost(to selection: GridSelection) {
         guard let app = NSWorkspace.shared.frontmostApplication else { return NSSound.beep() }
-        move(app, to: selection)
+        var screen: NSScreen?
+        if store.config.cycleScreens, let lastPlacement,
+           let frame = WindowMover.focusedWindowFrame(of: app),
+           lastPlacement.isRepeated(area: selection, processID: app.processIdentifier, frame: frame) {
+            screen = WindowMover.screen(after: frame)
+        }
+        let frame = move(app, to: selection, on: screen)
+        lastPlacement = frame.map { Placement(processID: app.processIdentifier, area: selection, frame: $0) }
     }
 
-    private func move(_ app: NSRunningApplication, to selection: GridSelection) {
+    /// Returns where the window ended up, or `nil` when it couldn't be moved.
+    @discardableResult
+    private func move(_ app: NSRunningApplication, to selection: GridSelection, on screen: NSScreen? = nil) -> CGRect? {
         do {
-            try WindowMover.move(windowOf: app, to: selection)
+            return try WindowMover.move(windowOf: app, to: selection, on: screen)
         } catch .notTrusted {
             WindowMover.requestTrust()
             showSettings()
         } catch {
             NSSound.beep()
         }
+        return nil
     }
 
     private func showGrid() {

@@ -6,6 +6,18 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The grid panel shows your screens in their arrangement when more than one is connected. Click one
+  to drag the grid, or pick a preset, for that screen; hovering it outlines the screen.
+- Monitor cycling, as in Divvy: with **Repeat a shortcut for the next screen** on (Settings → General),
+  pressing a preset's shortcut again moves the window to the same area of the next screen.
+
+### Fixed
+
+- The grid panel closes when a display is connected, removed or rearranged, instead of placing the
+  window with the old screen's size.
+
 ## [1.2.0] - 2026-10-14
 
 ### Added
