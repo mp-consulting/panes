@@ -279,10 +279,10 @@ struct GeneralPane: View {
                                 LabeledContent("Rows", value: "\(store.config.grid.rows)")
                             }
                             Toggle("Show resize preview", isOn: $store.config.showResizePreview)
-                                .toggleStyle(.switch)
+                                .toggleStyle(.trailingSwitch)
                                 .help("While you drag across the grid or hover a preset, outline where the window will land.")
                             Toggle("Repeat a shortcut for the next screen", isOn: $store.config.cycleScreens)
-                                .toggleStyle(.switch)
+                                .toggleStyle(.trailingSwitch)
                                 .help("Press a preset's shortcut again, with the window still where it put it, to move the window to the same area of the next screen.")
                                 .padding(.bottom, 6)
                             Text("Hotkey to open the grid for the frontmost window")
@@ -305,7 +305,7 @@ struct GeneralPane: View {
 
                 GlassCard(title: "Startup", systemImage: "power") {
                     Toggle("Open Panes at login", isOn: $launchAtLogin)
-                        .toggleStyle(.switch)
+                        .toggleStyle(.trailingSwitch)
                         .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
                     if let launchError { IssueLabel(message: launchError) }
                 }
@@ -398,7 +398,7 @@ struct UpdatesCard: View {
         GlassCard(title: "Updates", systemImage: "arrow.down.circle") {
             if updater.isEnabled {
                 Toggle("Check for updates once a day", isOn: $store.config.checkForUpdates)
-                    .toggleStyle(.switch)
+                    .toggleStyle(.trailingSwitch)
                     .onChange(of: store.config.checkForUpdates) { _, enabled in
                         if enabled { Task { await updater.checkIfDue() } }
                     }

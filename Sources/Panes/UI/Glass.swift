@@ -55,3 +55,24 @@ struct IssueLabel: View {
             .symbolRenderingMode(.multicolor)
     }
 }
+
+/// A switch at the trailing edge, so switches line up with each other and with the steppers above
+/// them instead of following their labels.
+struct TrailingSwitchToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.label
+                .fixedSize(horizontal: false, vertical: true)
+                // Read out by the switch itself.
+                .accessibilityHidden(true)
+            Spacer(minLength: 0)
+            Toggle(isOn: configuration.$isOn) { configuration.label }
+                .toggleStyle(.switch)
+                .labelsHidden()
+        }
+    }
+}
+
+extension ToggleStyle where Self == TrailingSwitchToggleStyle {
+    static var trailingSwitch: TrailingSwitchToggleStyle { .init() }
+}

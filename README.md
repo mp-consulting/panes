@@ -89,7 +89,8 @@ list once and allow the new one.
 | Apply a preset | Press its shortcut, with the window to place in front |
 | Cancel a drag | Escape before releasing the mouse: the window stays put and the grid closes |
 | Close the grid | Escape, the hotkey again, or click elsewhere |
-| Settings, Quit | Right-click (or Control-click) the menu-bar icon, or the gear in the grid |
+| Settings | Click the gear in the grid: the panel turns over to the full settings, and the arrow at the top left turns it back. Or right-click (or Control-click) the menu-bar icon |
+| Quit | Right-click (or Control-click) the menu-bar icon |
 
 In the **preset editor**, drag on the grid to set the area. Columns and rows can change per preset,
 and the selected area is rescaled to stay the same part of the screen. Click the shortcut button and

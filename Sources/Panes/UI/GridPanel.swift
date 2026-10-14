@@ -30,6 +30,8 @@ final class FloatingPanel: NSPanel {
     private var screenIndex = 0
     /// That screen, menu bar and Dock excluded, in Accessibility coordinates.
     private var targetArea: CGRect = .zero
+    /// Whether the panel has turned over to the settings.
+    private var showsSettings = false
 
     init(store: Store,
          updater: Updater,
@@ -60,6 +62,7 @@ final class FloatingPanel: NSPanel {
         else { return NSSound.beep() }
         self.target = target
         self.screens = screens
+        showsSettings = false
         screenIndex = screens.firstIndex { $0.frame == screen.frame } ?? 0
 
         let controller = NSHostingController(rootView: makeView())
@@ -89,6 +92,8 @@ final class FloatingPanel: NSPanel {
     }
 
     func close() {
+        shadowTimer?.invalidate()
+        shadowTimer = nil
         resizePreview.hide()
         panel?.delegate = nil
         panel?.orderOut(nil)
@@ -97,7 +102,12 @@ final class FloatingPanel: NSPanel {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        close()
+        // A sheet from the settings (the Divvy import dialog) takes key without leaving the panel;
+        // which window has it is only known once the change is through.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let panel, !panel.isKeyWindow, NSApp.keyWindow?.sheetParent !== panel else { return }
+            close()
+        }
     }
 
     /// Points the grid at another screen: its shape, the preview, and where the window goes.
@@ -111,6 +121,42 @@ final class FloatingPanel: NSPanel {
         panel.setFrame(NSRect(x: old.maxX - size.width, y: old.maxY - size.height, width: size.width, height: size.height),
                        display: true)
         refreshShadow()
+    }
+
+    /// Halfway through the flip, with the card edge-on: swaps the face and resizes the panel to it,
+    /// about the same centre and kept on screen.
+    private func turnOver() {
+        guard let panel else { return }
+        showsSettings.toggle()
+        let size = layOut()
+        let old = panel.frame
+        var frame = NSRect(x: old.midX - size.width / 2, y: old.midY - size.height / 2, width: size.width, height: size.height)
+        if let visible = (panel.screen ?? NSScreen.main)?.visibleFrame {
+            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+        }
+        panel.setFrame(frame, display: true)
+    }
+
+    /// Redraws the shadow on every frame of a flip.
+    private var shadowTimer: Timer?
+
+    /// A clear window's shadow is a snapshot of its content: left alone, it would keep outlining the
+    /// flat card while the card turns. Turning it off for the flip made it pop out and back in, so it
+    /// is redrawn every frame instead.
+    private func setFlipping(_ isFlipping: Bool) {
+        resizePreview.hide()
+        shadowTimer?.invalidate()
+        shadowTimer = nil
+        if isFlipping {
+            let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.panel?.invalidateShadow() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            shadowTimer = timer
+        } else {
+            refreshShadow()
+        }
     }
 
     /// A clear window's shadow follows the shape of its content when first drawn and never again, so
@@ -127,7 +173,7 @@ final class FloatingPanel: NSPanel {
         content.rootView = makeView()
         // Measure through the controller: an NSHostingView's fittingSize is zero until it has
         // been laid out in a window, which left the panel invisible at 0x0.
-        return content.sizeThatFits(in: NSSize(width: 1000, height: 2000))
+        return content.sizeThatFits(in: NSSize(width: 2000, height: 2000))
     }
 
     private func makeView() -> GridPanelView {
@@ -149,6 +195,9 @@ final class FloatingPanel: NSPanel {
                 if let target { apply(target, selection, screen) }
             },
             preview: { [weak self] selection in self?.preview(selection) },
+            showsSettings: showsSettings,
+            turnOver: { [weak self] in self?.turnOver() },
+            flipping: { [weak self] isFlipping in self?.setFlipping(isFlipping) },
             cancel: { [weak self] in self?.close() },
             openSettings: { [weak self] in
                 self?.close()
@@ -186,10 +235,77 @@ struct GridPanelView: View {
     let previewScreen: (Int?) -> Void
     let apply: (GridSelection) -> Void
     let preview: (GridSelection?) -> Void
+    /// Whether the panel shows the settings (the back) instead of the grid.
+    let showsSettings: Bool
+    /// Swaps the face and resizes the panel; called halfway through a flip, with the card edge-on.
+    let turnOver: () -> Void
+    /// Called with `true` as the card starts turning and `false` once it has landed.
+    let flipping: (Bool) -> Void
     let cancel: () -> Void
     let openSettings: () -> Void
 
+    /// The card's turn about its vertical axis: 0 lies flat, ±90 is edge-on.
+    @State private var angle: Double = 0
+
+    /// How shallow the turn's perspective is. Deeper looks more 3D but enlarges the near edge more.
+    private static let perspective = 0.25
+    /// Clear space around the card for its near edge, enlarged by perspective mid-turn, so it isn't
+    /// clipped by the panel. At most (1 / (1 - perspective / 2) - 1) / 2 of the card's height: 48pt
+    /// covers the 620pt settings. Clear pixels let clicks through to whatever is below.
+    static let turnMargin: CGFloat = 48
+
     var body: some View {
+        FaceStack(showing: showsSettings ? 1 : 0) {
+            front
+                .padding(16)
+                .frame(width: width)
+                .glassEffect(.regular, in: .rect(cornerRadius: 28))
+                .faceShown(!showsSettings)
+            settings
+                .faceShown(showsSettings)
+        }
+        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: Self.perspective)
+        .padding(Self.turnMargin)
+    }
+
+    /// Turns the card edge-on, lets the panel swap the face and size, then turns the new face in.
+    /// Going back turns the other way, so the grid comes back the way it left.
+    private func flip() {
+        let edgeOn: Double = showsSettings ? -90 : 90
+        flipping(true)
+        withAnimation(.easeIn(duration: 0.18)) {
+            angle = edgeOn
+        } completion: {
+            turnOver()
+            angle = -edgeOn
+            // A pass for the new face to lay out edge-on before it turns in.
+            DispatchQueue.main.async {
+                withAnimation(.easeOut(duration: 0.24)) {
+                    angle = 0
+                } completion: {
+                    flipping(false)
+                }
+            }
+        }
+    }
+
+    /// The settings window's content, on the back of the card.
+    private var settings: some View {
+        SettingsView(store: store, updater: updater)
+            .overlay(alignment: .topLeading) {
+                // Where the settings window has its traffic lights.
+                Button("Back to the Grid", systemImage: "chevron.backward", action: flip)
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .help("Back to the grid")
+                    .padding(.top, 16)
+                    .padding(.leading, 22)
+            }
+            .clipShape(.rect(cornerRadius: 28, style: .continuous))
+    }
+
+    private var front: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
@@ -213,10 +329,6 @@ struct GridPanelView: View {
                 }
             }
         }
-        .padding(16)
-        .frame(width: width)
-        .glassEffect(.regular, in: .rect(cornerRadius: 28))
-        .padding(1)
     }
 
     private var header: some View {
@@ -238,11 +350,11 @@ struct GridPanelView: View {
                     .buttonBorderShape(.circle)
                     .help("Panes \(release.version.description) is available")
             }
-            Button("Settings", systemImage: "gearshape", action: openSettings)
+            Button("Settings", systemImage: "gearshape", action: flip)
                 .labelStyle(.iconOnly)
                 .buttonStyle(.glass)
                 .buttonBorderShape(.circle)
-                .help("Settings…")
+                .help("Settings")
         }
     }
 
@@ -257,6 +369,35 @@ struct GridPanelView: View {
         }
         .buttonStyle(.glass)
         .tint(.orange)
+    }
+}
+
+/// Both faces of the grid panel, each at its own size and centred, sized to the face showing. Both
+/// stay in the view tree, so a flip never inserts views: Liquid Glass grows newly inserted views
+/// into place, and the settings would lay themselves out while turning in. A flip only turns the
+/// card and swaps which face is visible.
+struct FaceStack: Layout {
+    var showing: Int
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews.indices.contains(showing) ? subviews[showing].sizeThatFits(.unspecified) : .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            subview.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center, proposal: ProposedViewSize(size))
+        }
+    }
+}
+
+private extension View {
+    /// The face not showing stays laid out but can't be seen, clicked, focused or read out.
+    func faceShown(_ shown: Bool) -> some View {
+        opacity(shown ? 1 : 0)
+            .allowsHitTesting(shown)
+            .disabled(!shown)
+            .accessibilityHidden(!shown)
     }
 }
 
