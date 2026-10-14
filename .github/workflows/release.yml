@@ -1,0 +1,76 @@
+name: Release
+
+# Publishing a GitHub release builds Panes, signs it with a Developer ID certificate, packs it into
+# a disk image, notarizes it and attaches Panes-<version>.dmg to the release. The version comes
+# from the release tag (v1.2.0 -> 1.2.0). Secrets are listed in the README under "Releases".
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    # macOS 26 and its Xcode: the app uses the Liquid Glass APIs and Swift 6.2.
+    runs-on: macos-26
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      # Notarization is skipped when this secret is missing; the DMG is then signed only.
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Test
+        run: swift test
+
+      - name: Import signing certificate
+        env:
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -n 1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::DEVELOPER_ID_CERTIFICATE holds no Developer ID Application identity"
+            exit 1
+          fi
+          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Build app
+        run: VERSION="${TAG#v}" BUILD_NUMBER="$GITHUB_RUN_NUMBER" scripts/build-app.sh
+
+      - name: Make disk image
+        run: |
+          DMG="$HOME/Library/Caches/Panes/dist/Panes-${TAG#v}.dmg"
+          scripts/make-dmg.sh "$HOME/Library/Caches/Panes/dist/Panes.app" "$DMG"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+
+      - name: Notarize
+        if: env.APPLE_ID != ''
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose "$DMG"
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "$DMG" --clobber
+
+      - name: Remove keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

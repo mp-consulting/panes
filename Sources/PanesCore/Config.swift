@@ -1,0 +1,125 @@
+import Foundation
+
+/// The on-disk configuration, `~/Library/Application Support/Panes/config.json`.
+public struct Config: Codable, Equatable, Sendable {
+    public struct Preset: Codable, Equatable, Identifiable, Sendable {
+        public var id: UUID
+        public var name: String
+        /// e.g. `ctrl+opt+cmd+left` (see `KeyCombo.init(parsing:layout:)`); empty for a preset that
+        /// is only offered as a button in the grid panel.
+        public var key: String
+        public var enabled: Bool
+        public var area: GridSelection
+
+        public init(id: UUID = UUID(), name: String, key: String, enabled: Bool = true, area: GridSelection) {
+            self.id = id
+            self.name = name
+            self.key = key
+            self.enabled = enabled
+            self.area = area
+        }
+
+        // A hand-written config may leave out `id` and `enabled`.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+            name = try c.decode(String.self, forKey: .name)
+            key = try c.decodeIfPresent(String.self, forKey: .key) ?? ""
+            enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+            area = try c.decode(GridSelection.self, forKey: .area)
+        }
+    }
+
+    public struct GridSize: Codable, Equatable, Sendable {
+        public var columns: Int
+        public var rows: Int
+
+        public init(columns: Int, rows: Int) {
+            self.columns = columns
+            self.rows = rows
+        }
+    }
+
+    public static let gridSizeRange = 1...24
+
+    /// The grid shown by the menu-bar panel.
+    public var grid: GridSize
+    /// Optional global shortcut that opens the grid panel for the frontmost window.
+    public var gridHotkey: String?
+    public var presets: [Preset]
+    /// While dragging across the grid (or hovering a preset), outline on screen where the window will land.
+    public var showResizePreview: Bool
+
+    public init(grid: GridSize, gridHotkey: String? = nil, presets: [Preset], showResizePreview: Bool = true) {
+        self.grid = grid
+        self.gridHotkey = gridHotkey
+        self.presets = presets
+        self.showResizePreview = showResizePreview
+    }
+
+    // Fields added after the first release are optional, so older config files keep loading.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        grid = try c.decode(GridSize.self, forKey: .grid)
+        gridHotkey = try c.decodeIfPresent(String.self, forKey: .gridHotkey)
+        presets = try c.decode([Preset].self, forKey: .presets)
+        showResizePreview = try c.decodeIfPresent(Bool.self, forKey: .showResizePreview) ?? true
+    }
+
+    /// Used when there is neither a config file nor a Divvy install to import from.
+    public static var fallback: Config {
+        Config(
+            grid: GridSize(columns: 6, rows: 6),
+            presets: [
+                Preset(name: "Left half", key: "ctrl+opt+cmd+left",
+                       area: GridSelection(columns: 2, rows: 1, start: Cell(column: 0, row: 0), end: Cell(column: 0, row: 0))),
+                Preset(name: "Right half", key: "ctrl+opt+cmd+right",
+                       area: GridSelection(columns: 2, rows: 1, start: Cell(column: 1, row: 0), end: Cell(column: 1, row: 0))),
+                Preset(name: "Full screen", key: "ctrl+opt+cmd+up",
+                       area: GridSelection(columns: 1, rows: 1, start: Cell(column: 0, row: 0), end: Cell(column: 0, row: 0))),
+            ]
+        )
+    }
+
+    public func encoded() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(self)
+    }
+
+    public static func decode(_ data: Data) throws -> Config {
+        try JSONDecoder().decode(Config.self, from: data)
+    }
+
+    /// Problems that would make a preset or the grid unusable, keyed by preset id
+    /// (`nil` for the grid and its hotkey) so the UI can show each next to its field.
+    public func issues(layout: KeyLayout) -> [(preset: UUID?, message: String)] {
+        var issues: [(UUID?, String)] = []
+        if !Self.gridSizeRange.contains(grid.columns) || !Self.gridSizeRange.contains(grid.rows) {
+            issues.append((nil, "The grid needs 1 to 24 columns and rows."))
+        }
+        var seen: [KeyCombo: String] = [:]
+        if let gridHotkey, !gridHotkey.isEmpty {
+            do { seen[try KeyCombo(parsing: gridHotkey, layout: layout)] = "the grid hotkey" } catch {
+                issues.append((nil, "Grid hotkey: \(error)."))
+            }
+        }
+        for preset in presets where preset.enabled {
+            if !preset.area.isValid {
+                issues.append((preset.id, "The area is outside its \(preset.area.columns)×\(preset.area.rows) grid."))
+            }
+            guard !preset.key.isEmpty else { continue }
+            do {
+                let combo = try KeyCombo(parsing: preset.key, layout: layout)
+                if let other = seen[combo] {
+                    issues.append((preset.id, "\(combo.displayString(layout: layout)) is already used by \(other)."))
+                } else {
+                    seen[combo] = "“\(preset.name)”"
+                }
+            } catch {
+                issues.append((preset.id, "Shortcut: \(error)."))
+            }
+        }
+        return issues
+    }
+}
