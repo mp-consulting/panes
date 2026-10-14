@@ -72,12 +72,28 @@ public enum DivvyImport {
         }
     }
 
-    /// `PropertyListSerialization` surfaces `CF$UID` values as an opaque `__NSCFType` whose only
-    /// public trace is its description: `<CFKeyedArchiverUID 0x… [0x…]>{value = 4}`.
+    /// The type of the archive's object references. It is private to CoreFoundation, so it is read
+    /// off a throwaway archive.
+    private static let uidTypeID: CFTypeID? = {
+        guard let blob = try? NSKeyedArchiver.archivedData(withRootObject: NSArray(), requiringSecureCoding: true),
+              let archive = try? PropertyListSerialization.propertyList(from: blob, format: nil) as? [String: Any],
+              let top = archive["$top"] as? [String: Any], let root = top["root"]
+        else { return nil }
+        return CFGetTypeID(root as CFTypeRef)
+    }()
+
+    /// An object reference's index into `$objects`. `PropertyListSerialization` surfaces references
+    /// as an opaque object with no public accessor, so it is written back out as an XML property
+    /// list, where the format spells it `<dict><key>CF$UID</key><integer>4</integer></dict>`.
     static func uidIndex(_ value: Any) -> Int? {
-        guard !(value is String), !(value is NSNumber), !(value is Data) else { return nil }
-        let text = String(describing: value)
-        guard text.hasPrefix("<CFKeyedArchiverUID"), let range = text.range(of: "value = ") else { return nil }
-        return Int(text[range.upperBound...].prefix { $0.isNumber })
+        guard let uidTypeID, CFGetTypeID(value as CFTypeRef) == uidTypeID,
+              let xml = try? PropertyListSerialization.data(fromPropertyList: [value], format: .xml, options: 0)
+        else { return nil }
+        let text = String(decoding: xml, as: UTF8.self)
+        guard let key = text.range(of: "<key>CF$UID</key>"),
+              let open = text.range(of: "<integer>", range: key.upperBound..<text.endIndex),
+              let close = text.range(of: "</integer>", range: open.upperBound..<text.endIndex)
+        else { return nil }
+        return Int(text[open.upperBound..<close.lowerBound])
     }
 }
