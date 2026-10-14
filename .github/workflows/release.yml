@@ -16,10 +16,12 @@ jobs:
     runs-on: macos-26
     env:
       TAG: ${{ github.event.release.tag_name }}
-      # Notarization is skipped when this secret is missing; the DMG is then signed only.
-      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      # Notarization is skipped when the key is missing; the DMG is then signed only. Only whether it
+      # is set lives here: the key itself is given to the one step that uses it, not to the tests.
+      NOTARIZE: ${{ secrets.APPLE_API_KEY != '' }}
     steps:
-      - uses: actions/checkout@v5
+      # Pinned to a commit: a moved tag must not run in a job that holds the signing certificate.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Test
         run: swift test
@@ -31,12 +33,12 @@ jobs:
         run: |
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
           KEYCHAIN_PASSWORD="$(uuidgen)"
-          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          trap 'rm -f "$RUNNER_TEMP/certificate.p12"' EXIT
+          (umask 077 && echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12")
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          rm "$RUNNER_TEMP/certificate.p12"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -n 1)"
@@ -56,16 +58,17 @@ jobs:
           echo "DMG=$DMG" >> "$GITHUB_ENV"
 
       - name: Notarize
-        if: env.APPLE_API_KEY != ''
+        if: env.NOTARIZE == 'true'
         env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           KEY="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY_ID.p8"
-          printf '%s\n' "$APPLE_API_KEY" > "$KEY"
+          trap 'rm -f "$KEY"' EXIT
+          (umask 077 && printf '%s\n' "$APPLE_API_KEY" > "$KEY")
           xcrun notarytool submit "$DMG" --key "$KEY" --key-id "$APPLE_API_KEY_ID" \
             --issuer "$APPLE_API_ISSUER" --wait
-          rm "$KEY"
           xcrun stapler staple "$DMG"
           spctl --assess --type open --context context:primary-signature --verbose "$DMG"
 
