@@ -111,6 +111,8 @@ Panes before editing it by hand. If the file can't be read at launch, Panes rena
 
 - `area` is a cell range on its own `columns` × `rows` grid. Row 0 is the top row, and both ends are
   included.
+- `grid` sizes are kept to 1–24 columns and rows, and an `area` grid to 1–48; values outside are
+  brought into range when the file is read.
 - `key` is modifiers plus a key, joined with `+`: modifiers `ctrl`, `opt`, `shift`, `cmd`; keys are a
   character on the active layout (`w`, `é`), or `left`, `right`, `up`, `down`, `space`, `return`,
   `tab`, `escape`, `delete`, `home`, `end`, `pageup`, `pagedown`, `f1`–`f15`, `keypad0`–`keypad9`. An

@@ -98,6 +98,16 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
         #expect(try Config.decode(Data(json.utf8)).showResizePreview)
     }
 
+    @Test func handEditedGridSizesAreBroughtIntoRange() throws {
+        let json = #"""
+            {"grid":{"columns":0,"rows":100000},"presets":[{"name":"Odd","area":
+              {"columns":0,"rows":480,"start":{"column":0,"row":240},"end":{"column":0,"row":479}}}]}
+            """#
+        let config = try Config.decode(Data(json.utf8))
+        #expect(config.grid == .init(columns: 1, rows: 24))
+        #expect(config.presets[0].area == GridSelection(columns: 1, rows: 48, start: Cell(column: 0, row: 24), end: Cell(column: 0, row: 47)))
+    }
+
     @Test func fallbackIsValid() {
         #expect(Config.fallback.issues(layout: .usANSI).isEmpty)
     }

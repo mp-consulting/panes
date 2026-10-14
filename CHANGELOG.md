@@ -10,6 +10,8 @@ All notable changes to Panes are listed here. The format follows
 
 - A `config.json` that can't be read, such as one with a typo from a hand edit, is kept as
   `config-unreadable-<date>.json` instead of being overwritten, and Settings opens to say so.
+- Out-of-range grid sizes in a hand-edited `config.json` are brought into range when it's read,
+  instead of placing windows at invalid coordinates or crashing the preset editor.
 
 ## [1.0.0] - 2026-10-14
 

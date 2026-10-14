@@ -41,7 +41,7 @@ public enum DivvyImport {
         }
         guard !presets.isEmpty else { throw .noShortcuts }
         return Config(
-            grid: Config.GridSize(columns: columns, rows: rows), presets: presets,
+            grid: Config.GridSize(columns: columns, rows: rows).clamped, presets: presets,
             showResizePreview: (prefs["showResizePreview"] as? Bool) ?? true
         )
     }

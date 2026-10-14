@@ -14,6 +14,9 @@ public struct Cell: Codable, Equatable, Sendable {
 /// A rectangular selection of cells on a `columns` x `rows` grid, inclusive on both ends.
 /// The two corners may be given in any order (a drag can go up-left).
 public struct GridSelection: Codable, Equatable, Sendable {
+    /// The finest grid a decoded selection keeps: twice the largest grid, as a subdivided Divvy grid has.
+    public static let maxSize = 48
+
     public var columns: Int
     public var rows: Int
     public var start: Cell
@@ -24,6 +27,20 @@ public struct GridSelection: Codable, Equatable, Sendable {
         self.rows = rows
         self.start = start
         self.end = end
+    }
+
+    // A hand-edited size of 0 would divide by zero, and a huge one would stall the views drawing it.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            columns: max(try c.decode(Int.self, forKey: .columns), 1),
+            rows: max(try c.decode(Int.self, forKey: .rows), 1),
+            start: try c.decode(Cell.self, forKey: .start),
+            end: try c.decode(Cell.self, forKey: .end)
+        )
+        if columns > Self.maxSize || rows > Self.maxSize {
+            self = resized(columns: min(columns, Self.maxSize), rows: min(rows, Self.maxSize))
+        }
     }
 
     public var isValid: Bool {

@@ -38,6 +38,19 @@ public struct Config: Codable, Equatable, Sendable {
             self.columns = columns
             self.rows = rows
         }
+
+        /// The same size, brought into `gridSizeRange`.
+        public var clamped: GridSize {
+            func clamp(_ value: Int) -> Int { min(max(value, gridSizeRange.lowerBound), gridSizeRange.upperBound) }
+            return GridSize(columns: clamp(columns), rows: clamp(rows))
+        }
+
+        // The panel draws one view per cell: a hand-edited 0 or 10000 must not reach it.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self = GridSize(columns: try c.decode(Int.self, forKey: .columns),
+                            rows: try c.decode(Int.self, forKey: .rows)).clamped
+        }
     }
 
     public static let gridSizeRange = 1...24
