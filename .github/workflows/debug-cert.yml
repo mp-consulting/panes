@@ -1,0 +1,23 @@
+name: Debug certificate import
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: macos-26
+    env:
+      CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE }}
+      CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+    steps:
+      - run: |
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/c.p12"
+          echo "p12 sha256 prefix: $(shasum -a 256 "$RUNNER_TEMP/c.p12" | cut -c1-16) (local f377f6944d111e7a)"
+          printf %s "$CERTIFICATE_PASSWORD" | LC_ALL=C grep -q '[^ -~]' && echo "password non-ASCII: yes" || echo "password non-ASCII: no"
+          case "$CERTIFICATE_PASSWORD" in ' '*|*' '|*$'\n'|*$'\r') echo "edge whitespace: yes" ;; *) echo "edge whitespace: no" ;; esac
+          [ -z "$CERTIFICATE_PASSWORD" ] && echo "password empty: yes"
+          echo "locale: LANG=${LANG:-unset} LC_ALL=${LC_ALL:-unset}"
+          for loc in C en_US.UTF-8; do
+            K="$RUNNER_TEMP/t-$loc.keychain-db"
+            security create-keychain -p x "$K"
+            echo "--- import with LC_ALL=$loc:"
+            LANG=$loc LC_ALL=$loc security import "$RUNNER_TEMP/c.p12" -k "$K" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign || true
+            security delete-keychain "$K"
+          done
