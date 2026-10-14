@@ -1,0 +1,87 @@
+#!/bin/sh
+# Day-to-day commands for working on Panes. `bin/dev help` lists them.
+# Build output lives in ~/Library/Caches/Panes, never in the repo: an iCloud-synced checkout gets
+# Finder metadata that codesign refuses.
+set -eu
+cd "$(dirname "$0")/.."
+
+CACHE="$HOME/Library/Caches/Panes"
+BUILD="$CACHE/build"
+TOOLS="$CACHE/tools"
+
+usage() {
+    cat <<'EOF'
+Usage: bin/dev <command> [arguments]
+
+  test [args]        Run the unit tests (extra arguments go to `swift test`, e.g. --filter Screen)
+  build              Debug build
+  app                Release Panes.app in ~/Library/Caches/Panes/dist
+  install            Release build, copied to ~/Applications and relaunched (quits every running Panes)
+  quit               Quit every running copy of Panes
+  screen [W H] [--no-view]
+                     Add a virtual test screen (default 1920 1080) until Ctrl-C, with a live view of it
+                     on the main screen; --no-view skips the view and its Screen Recording permission
+  screens            List the connected screens, as Panes sees them
+  config             Print config.json
+  identity           Create the "Panes Local Signing" certificate, so rebuilds keep Accessibility access
+  help               Show this
+
+Signing follows scripts/build-app.sh: SIGN_IDENTITY, else "Panes Local Signing", else ad-hoc.
+EOF
+}
+
+# Ad-hoc builds lose the Accessibility grant on every rebuild: windows stop moving and Escape no
+# longer cancels a drag, which looks like a bug. Say so up front.
+warn_if_adhoc() {
+    if [ -z "${SIGN_IDENTITY:-}" ] && ! security find-certificate -c "Panes Local Signing" >/dev/null 2>&1; then
+        echo "note: signing ad-hoc, so Panes must be allowed in Accessibility again after this build." >&2
+        echo "      Run bin/dev identity once, or set SIGN_IDENTITY, to keep the grant across rebuilds." >&2
+    fi
+}
+
+# Compiles the virtual-screen tool when its sources are newer than the binary.
+build_virtual_screen() {
+    tool="$TOOLS/virtual-screen"
+    if [ ! -x "$tool" ] || [ -n "$(find scripts/virtual-screen -newer "$tool" -type f)" ]; then
+        mkdir -p "$TOOLS"
+        echo "Building the virtual-screen tool…" >&2
+        # Swift 5 mode: a small script around AppKit and a capture callback, not worth strict concurrency.
+        swiftc -swift-version 5 -O -import-objc-header scripts/virtual-screen/VirtualDisplay.h \
+            scripts/virtual-screen/main.swift -o "$tool"
+    fi
+}
+
+command="${1:-help}"
+[ $# -gt 0 ] && shift
+
+case "$command" in
+    test)
+        swift test --scratch-path "$BUILD" "$@" ;;
+    build)
+        swift build --scratch-path "$BUILD" "$@" ;;
+    app)
+        warn_if_adhoc
+        scripts/build-app.sh ;;
+    install)
+        warn_if_adhoc
+        scripts/build-app.sh --install ;;
+    quit)
+        if pkill -x Panes; then echo "Quit Panes."; else echo "Panes isn't running."; fi ;;
+    screen)
+        build_virtual_screen
+        exec "$TOOLS/virtual-screen" "$@" ;;
+    screens)
+        swift scripts/list-screens.swift ;;
+    config)
+        file="$HOME/Library/Application Support/Panes/config.json"
+        echo "# $file" >&2
+        cat "$file" ;;
+    identity)
+        scripts/create-signing-identity.sh ;;
+    help|-h|--help)
+        usage ;;
+    *)
+        echo "Unknown command: $command" >&2
+        usage >&2
+        exit 1 ;;
+esac

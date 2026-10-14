@@ -10,13 +10,16 @@ Always pass `--scratch-path`: the checkout can sit in an iCloud-synced folder, a
 build output there ("resource fork, Finder information, or similar detritus").
 
 ```sh
-swift test  --scratch-path ~/Library/Caches/Panes/build   # unit tests (PanesCore only)
-swift build --scratch-path ~/Library/Caches/Panes/build   # debug build
-scripts/build-app.sh            # release Panes.app into ~/Library/Caches/Panes/dist/
-scripts/build-app.sh --install  # also copies to ~/Applications, kills and relaunches Panes
+bin/dev test      # unit tests (PanesCore only); swift test --scratch-path ~/Library/Caches/Panes/build
+bin/dev build     # debug build
+bin/dev app       # release Panes.app into ~/Library/Caches/Panes/dist/ (scripts/build-app.sh)
+bin/dev install   # also copies to ~/Applications, kills every running Panes and relaunches it
+bin/dev screen    # virtual second screen until Ctrl-C, for multi-screen checks
+bin/dev screens   # list connected screens and their frames
 ```
 
-Never create a `.build/` in the repo. `--install` replaces the running app, so ask before using it.
+Never create a `.build/` in the repo. `install` replaces the running app, so ask before using it.
+`screen` adds a display to the user's desktop: ask too, and stop it when done.
 
 ## Architecture
 

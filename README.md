@@ -173,10 +173,22 @@ Divvy's resize preview and monitor cycling are reproduced. These other Divvy opt
 
 ## Development
 
+`bin/dev` wraps the everyday commands (`bin/dev help` lists them all):
+
 ```sh
-swift test  --scratch-path ~/Library/Caches/Panes/build   # unit tests
-swift build --scratch-path ~/Library/Caches/Panes/build   # debug build
+bin/dev test       # unit tests
+bin/dev build      # debug build
+bin/dev install    # release build into ~/Applications, relaunched
+bin/dev screen     # a virtual second screen until Ctrl-C, with a live view of it
+bin/dev screens    # the connected screens, as Panes sees them
 ```
+
+`bin/dev screen` makes it possible to test placement across screens without a second monitor. It
+uses macOS's private `CGVirtualDisplay` API, as DeskPad and BetterDisplay do. Nothing shows a virtual
+display, so a window on the main screen mirrors it. That window needs Screen Recording for the app you
+run the command from; `--no-view` skips it. `bin/dev screen 2560 1440` picks another size, and System
+Settings → Displays arranges it like any monitor. Adding or removing a display can switch HDR off on
+your real screens, so the tool turns it back on for every screen that had it, again on exit.
 
 The project is a Swift package with no dependencies:
 
@@ -187,7 +199,8 @@ The project is a Swift package with no dependencies:
 | `Sources/Panes/UI/` | SwiftUI and AppKit: the grid panel, the resize preview, the settings window, the shortcut recorder. |
 | `Sources/Panes/AppDelegate.swift`, `Store.swift` | The menu-bar item, hotkey wiring, and the config store that saves to disk. |
 | `Tests/PanesCoreTests/` | Tests for `PanesCore`, including an import of a Divvy-shaped keyed archive. |
-| `scripts/` | `build-app.sh` (bundle, sign, install), `make-dmg.sh` (disk image), `make-icon.swift` (renders the icon), `create-signing-identity.sh`. |
+| `bin/dev` | Entry point for the commands above. |
+| `scripts/` | `build-app.sh` (bundle, sign, install), `make-dmg.sh` (disk image), `make-icon.swift` (renders the icon), `create-signing-identity.sh`, `virtual-screen/` (the test screen), `list-screens.swift`. |
 
 Divvy's shortcuts live in its preferences as an `NSKeyedArchiver` blob of `Shortcut` objects.
 `DivvyImport` walks that archive as a plain property list, so no Divvy class is needed.

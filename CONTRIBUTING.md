@@ -18,9 +18,9 @@ Open an issue with:
 You need an Apple Silicon Mac on macOS 26 or later and Xcode with Swift 6.2 or later.
 
 ```sh
-scripts/create-signing-identity.sh                        # once per Mac, keeps Accessibility access across rebuilds
-swift test  --scratch-path ~/Library/Caches/Panes/build   # unit tests
-scripts/build-app.sh --install                            # build, install to ~/Applications and relaunch
+bin/dev identity   # once per Mac, keeps Accessibility access across rebuilds
+bin/dev test       # unit tests
+bin/dev install    # build, install to ~/Applications and relaunch
 ```
 
 Keep build output out of the repo (the scripts use `~/Library/Caches/Panes`): if the checkout sits in
@@ -33,8 +33,8 @@ an iCloud-synced folder, `codesign` rejects the Finder metadata iCloud adds. The
   Divvy importer live there because they can be tested without a UI. Add or update tests in
   `Tests/PanesCoreTests/` for any change to it.
 - **Try UI and window-moving changes in the real app.** They aren't unit-tested: run
-  `scripts/build-app.sh --install` and check the change by hand, on more than one screen if it touches
-  placement.
+  `bin/dev install` and check the change by hand, on more than one screen if it touches placement.
+  Without a second monitor, `bin/dev screen` adds a virtual one.
 - **Match the surrounding code**: its naming, its comment density, and its preference for SwiftUI with
   AppKit only where SwiftUI falls short. Comments explain *why*, not what.
 - **No dependencies.** The package has none, and adding one needs a strong reason.

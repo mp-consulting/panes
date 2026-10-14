@@ -10,6 +10,9 @@ if security find-certificate -c "$NAME" >/dev/null 2>&1; then
     echo "\"$NAME\" already exists."
     exit 0
 fi
+# macOS's own LibreSSL, not whichever openssl is first on the PATH: OpenSSL 3 (Homebrew's) writes
+# PKCS#12 files with AES and a SHA-256 MAC, which `security import` rejects as a wrong password.
+OPENSSL=/usr/bin/openssl
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cat > "$WORK/cert.cnf" <<CNF
@@ -24,10 +27,10 @@ basicConstraints = critical,CA:false
 keyUsage = critical,digitalSignature
 extendedKeyUsage = critical,codeSigning
 CNF
-openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -config "$WORK/cert.cnf" \
+"$OPENSSL" req -x509 -newkey rsa:2048 -nodes -days 3650 -config "$WORK/cert.cnf" \
     -keyout "$WORK/key.pem" -out "$WORK/cert.pem" 2>/dev/null
-PASS="$(openssl rand -hex 16)"
-openssl pkcs12 -export -inkey "$WORK/key.pem" -in "$WORK/cert.pem" -name "$NAME" \
+PASS="$("$OPENSSL" rand -hex 16)"
+"$OPENSSL" pkcs12 -export -inkey "$WORK/key.pem" -in "$WORK/cert.pem" -name "$NAME" \
     -out "$WORK/id.p12" -passout "pass:$PASS"
 # -T lets codesign use the key without a keychain prompt.
 security import "$WORK/id.p12" -k "$HOME/Library/Keychains/login.keychain-db" -P "$PASS" -T /usr/bin/codesign
