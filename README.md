@@ -31,9 +31,9 @@ presets.
 - **Keyboard-layout aware.** Shortcuts follow the active layout, so a Divvy shortcut stored as the
   QWERTY "Z" key shows as ⌃⌥⌘W on AZERTY, which is the key it really is.
 - **Multiple screens.** Windows are placed on the screen they're mostly on, inside the menu bar and Dock.
-  With several screens, the grid panel shows them in their arrangement: click one to place the window
-  there instead. Optionally, pressing a preset's shortcut again sends the window to the same area of
-  the next screen.
+  With several screens, the grid panel shows a row of screen icons, the main one first: click one to
+  place the window there instead. Optionally, pressing a preset's shortcut again sends the window to
+  the same area of the next screen.
 - **Updates itself.** Release builds check GitHub once a day and install a new version in one click,
   after checking its signature.
 - Menu-bar only, with no Dock icon except while Settings is open. Optionally opens at login.
@@ -85,7 +85,7 @@ list once and allow the new one.
 | --- | --- |
 | Open the grid | Click the menu-bar icon, or press the grid hotkey (set in Settings → General) |
 | Place the window | Drag across the grid and release, or click a preset button |
-| Place it on another screen | In the grid, click that screen in the miniature at the top right first. With **Repeat a shortcut for the next screen** on, press a preset's shortcut again |
+| Place it on another screen | In the grid, click that screen's icon at the top right first. With **Repeat a shortcut for the next screen** on, press a preset's shortcut again |
 | Apply a preset | Press its shortcut, with the window to place in front |
 | Cancel a drag | Escape before releasing the mouse: the window stays put and the grid closes |
 | Close the grid | Escape, the hotkey again, or click elsewhere |

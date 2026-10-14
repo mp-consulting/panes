@@ -184,14 +184,11 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
         #expect(ScreenLayout.index(after: 0, in: [laptop]) == 0)
     }
 
-    @Test func miniatureKeepsTheArrangementAndFits() {
-        let tiles = ScreenLayout.miniature(of: screens, fitting: CGSize(width: 100, height: 40))
-        let bounds = tiles.reduce(CGRect.null) { $0.union($1) }
-        #expect(bounds.width <= 100.001 && bounds.height <= 40.001)
-        #expect(abs(bounds.midX - 50) < 0.001 && abs(bounds.midY - 20) < 0.001)
-        #expect(tiles[1].maxX <= tiles[0].minX + 0.001) // left stays left
-        #expect(abs(tiles[2].maxY - tiles[0].minY) < 0.001) // above sits on the laptop
-        #expect(abs(tiles[0].width / tiles[0].height - laptop.width / laptop.height) < 0.001)
+    @Test func pickerListsThePrimaryScreenFirst() {
+        #expect(ScreenLayout.pickerOrder(of: screens) == [0, 1, 2])
+        let right = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+        #expect(ScreenLayout.pickerOrder(of: [laptop, right, left]) == [0, 2, 1])
+        #expect(ScreenLayout.pickerOrder(of: []) == [])
     }
 
     @Test func repeatedPlacementNeedsTheSameAppAreaAndFrame() {

@@ -8,8 +8,8 @@ All notable changes to Panes are listed here. The format follows
 
 ### Added
 
-- The grid panel shows your screens in their arrangement when more than one is connected. Click one
-  to drag the grid, or pick a preset, for that screen; hovering it outlines the screen.
+- The grid panel shows your screens as icons, the main screen first, when more than one is connected.
+  Click one to drag the grid, or pick a preset, for that screen; hovering it outlines the screen.
 - Monitor cycling, as in Divvy: with **Repeat a shortcut for the next screen** on (Settings → General),
   pressing a preset's shortcut again moves the window to the same area of the next screen.
 

@@ -17,23 +17,21 @@ public enum ScreenLayout {
     /// The screen after `index`, left to right (top to bottom when they share a left edge), wrapping
     /// round, so pressing the same shortcut again walks through every screen.
     public static func index(after index: Int, in screens: [CGRect]) -> Int {
-        let order = screens.indices.sorted { a, b in
-            (screens[a].minX, screens[a].minY, a) < (screens[b].minX, screens[b].minY, b)
-        }
+        let order = leftToRight(screens)
         guard let position = order.firstIndex(of: index) else { return order.first ?? index }
         return order[(position + 1) % order.count]
     }
 
-    /// The screens scaled down, arrangement kept, and centred in `size`: a miniature like the one in
-    /// System Settings → Displays. Top-left origin, as SwiftUI draws.
-    public static func miniature(of screens: [CGRect], fitting size: CGSize) -> [CGRect] {
-        let bounds = screens.reduce(CGRect.null) { $0.union($1) }
-        guard !bounds.isNull, bounds.width > 0, bounds.height > 0 else { return screens.map { _ in .zero } }
-        let scale = min(size.width / bounds.width, size.height / bounds.height)
-        let inset = CGPoint(x: (size.width - bounds.width * scale) / 2, y: (size.height - bounds.height * scale) / 2)
-        return screens.map { screen in
-            CGRect(x: inset.x + (screen.minX - bounds.minX) * scale, y: inset.y + (screen.minY - bounds.minY) * scale,
-                   width: screen.width * scale, height: screen.height * scale)
+    /// The order a screen picker lists them in: the primary screen (the first, as `NSScreen.screens`
+    /// lists them), then the others left to right.
+    public static func pickerOrder(of screens: [CGRect]) -> [Int] {
+        guard !screens.isEmpty else { return [] }
+        return [0] + leftToRight(screens).filter { $0 != 0 }
+    }
+
+    private static func leftToRight(_ screens: [CGRect]) -> [Int] {
+        screens.indices.sorted { a, b in
+            (screens[a].minX, screens[a].minY, a) < (screens[b].minX, screens[b].minY, b)
         }
     }
 }

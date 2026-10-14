@@ -63,12 +63,15 @@ final class FloatingPanel: NSPanel {
         screenIndex = screens.firstIndex { $0.frame == screen.frame } ?? 0
 
         let controller = NSHostingController(rootView: makeView())
+        content = controller
+        let size = layOut()
         let panel = FloatingPanel(
-            contentRect: .zero,
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
         panel.contentViewController = controller
+        panel.setContentSize(size)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -79,13 +82,10 @@ final class FloatingPanel: NSPanel {
         panel.animationBehavior = .utilityWindow
         panel.delegate = self
         panel.onCancel = { [weak self] in self?.close() }
-        self.panel = panel
-        content = controller
-
-        let size = layOut()
-        panel.setFrame(NSRect(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2,
-                              width: size.width, height: size.height), display: false)
+        panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2))
         panel.makeKeyAndOrderFront(nil)
+        self.panel = panel
+        refreshShadow()
     }
 
     func close() {
@@ -110,6 +110,13 @@ final class FloatingPanel: NSPanel {
         let old = panel.frame
         panel.setFrame(NSRect(x: old.maxX - size.width, y: old.maxY - size.height, width: size.width, height: size.height),
                        display: true)
+        refreshShadow()
+    }
+
+    /// A clear window's shadow follows the shape of its content when first drawn and never again, so
+    /// a resize, or glass that settles after the first pass, leaves a ghost of the old outline.
+    private func refreshShadow() {
+        DispatchQueue.main.async { [weak self] in self?.panel?.invalidateShadow() }
     }
 
     /// Rebuilds the content for the selected screen and returns the panel size it needs.
@@ -253,8 +260,8 @@ struct GridPanelView: View {
     }
 }
 
-/// The connected screens in their arrangement, as in System Settings → Displays. Clicking one points
-/// the grid at that screen.
+/// The connected screens as a row of icons, the main screen first. Clicking one points the grid at
+/// that screen.
 struct ScreenPicker: View {
     struct Screen {
         /// In Accessibility coordinates.
@@ -262,41 +269,45 @@ struct ScreenPicker: View {
         let name: String
     }
 
+    /// Indexes into `screens`, as `NSScreen.screens` lists them: 0 is the main screen.
     let screens: [Screen]
     let selected: Int
     let onSelect: (Int) -> Void
     let onHover: (Int?) -> Void
 
-    private let height: CGFloat = 28
+    /// The icons' height; with the platter's padding the picker is as tall as the gear button.
+    private let height: CGFloat = 18
 
     var body: some View {
-        let bounds = screens.reduce(CGRect.null) { $0.union($1.frame) }
-        // Screens side by side get a wide picker, stacked ones a narrow one; either fits the header.
-        let width = min(max(height * bounds.width / max(bounds.height, 1), 20), 120)
-        let tiles = ScreenLayout.miniature(of: screens.map(\.frame), fitting: CGSize(width: width, height: height))
-        ZStack(alignment: .topLeading) {
-            ForEach(tiles.indices, id: \.self) { index in
-                let tile = tiles[index].insetBy(dx: 1, dy: 1)
+        HStack(spacing: 4) {
+            ForEach(ScreenLayout.pickerOrder(of: screens.map(\.frame)), id: \.self) { index in
+                let screen = screens[index]
                 let isSelected = index == selected
                 Button { onSelect(index) } label: {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary.opacity(0.15)))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .strokeBorder(.primary.opacity(isSelected ? 0 : 0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary.opacity(0.22)))
+                        .overlay(alignment: .top) {
+                            // The menu bar, as System Settings → Displays marks the main screen.
+                            if index == 0 {
+                                Rectangle().fill(.white.opacity(0.8)).frame(height: 2.5)
+                            }
                         }
+                        .clipShape(.rect(cornerRadius: 2.5, style: .continuous))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .frame(width: max(tile.width, 0), height: max(tile.height, 0))
-                .position(x: tile.midX, y: tile.midY)
+                // The panel is key while open: a focusable icon would wear the focus ring from the start.
+                .focusable(false)
+                // Each icon keeps its screen's shape, within limits so a portrait or ultrawide one stays usable.
+                .frame(width: min(max(height * screen.frame.width / max(screen.frame.height, 1), 12), 64), height: height)
                 .onHover { onHover($0 ? index : nil) }
-                .help(screens[index].name)
-                .accessibilityLabel("Place on \(screens[index].name)")
+                .help(index == 0 ? "\(screen.name) (main screen)" : screen.name)
+                .accessibilityLabel("Place on \(screen.name)")
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .frame(width: width, height: height)
+        .padding(5)
+        .glassEffect(.regular, in: .rect(cornerRadius: 9))
     }
 }
 
