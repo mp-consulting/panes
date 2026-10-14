@@ -128,6 +128,7 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
 
     @Test func fallbackIsValid() {
         #expect(Config.fallback.issues(layout: .usANSI).isEmpty)
+        #expect(Config.fallback.issues(layout: azerty).isEmpty)
     }
 
     @Test func reportsDuplicateAndBrokenShortcutsPerPreset() {

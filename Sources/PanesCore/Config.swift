@@ -89,18 +89,27 @@ public struct Config: Codable, Equatable, Sendable {
         cycleScreens = try c.decodeIfPresent(Bool.self, forKey: .cycleScreens) ?? false
     }
 
-    /// Used when there is neither a config file nor a Divvy install to import from.
+    /// Used when there is neither a config file nor a Divvy install to import from: the author's own
+    /// setup, a 7-column layout of thirds and halves, plus a wide centre on a subdivided grid.
     public static var fallback: Config {
-        Config(
+        func area(_ columns: Int, _ rows: Int, from start: (Int, Int), to end: (Int, Int)) -> GridSelection {
+            GridSelection(columns: columns, rows: rows,
+                          start: Cell(column: start.0, row: start.1), end: Cell(column: end.0, row: end.1))
+        }
+        return Config(
             grid: GridSize(columns: 6, rows: 6),
+            gridHotkey: "ctrl+opt+cmd+space",
             presets: [
-                Preset(name: "Left half", key: "ctrl+opt+cmd+left",
-                       area: GridSelection(columns: 2, rows: 1, start: Cell(column: 0, row: 0), end: Cell(column: 0, row: 0))),
-                Preset(name: "Right half", key: "ctrl+opt+cmd+right",
-                       area: GridSelection(columns: 2, rows: 1, start: Cell(column: 1, row: 0), end: Cell(column: 1, row: 0))),
-                Preset(name: "Full screen", key: "ctrl+opt+cmd+up",
-                       area: GridSelection(columns: 1, rows: 1, start: Cell(column: 0, row: 0), end: Cell(column: 0, row: 0))),
-            ]
+                Preset(name: "Center", key: "ctrl+opt+cmd+c", area: area(7, 6, from: (2, 0), to: (4, 5))),
+                Preset(name: "Left", key: "ctrl+opt+cmd+left", area: area(7, 6, from: (0, 0), to: (1, 5))),
+                Preset(name: "Right", key: "ctrl+opt+cmd+right", area: area(7, 6, from: (5, 0), to: (6, 5))),
+                Preset(name: "Up", key: "ctrl+opt+cmd+up", area: area(7, 6, from: (2, 0), to: (4, 2))),
+                Preset(name: "Down", key: "ctrl+opt+cmd+down", area: area(7, 6, from: (2, 3), to: (4, 5))),
+                Preset(name: "Wide", key: "ctrl+opt+cmd+w", area: area(12, 12, from: (3, 0), to: (8, 11))),
+            ],
+            showResizePreview: true,
+            checkForUpdates: true,
+            cycleScreens: true
         )
     }
 

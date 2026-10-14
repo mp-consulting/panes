@@ -14,6 +14,12 @@ All notable changes to Panes are listed here. The format follows
 - Monitor cycling, as in Divvy: with **Repeat a shortcut for the next screen** on (Settings → General),
   pressing a preset's shortcut again moves the window to the same area of the next screen.
 
+### Changed
+
+- Without a config file or Divvy settings to import, Panes now starts with a 6×6 grid on
+  ⌃⌥⌘Space, six presets (Center, Left, Right, Up, Down and Wide, on ⌃⌥⌘C, ←, →, ↑, ↓ and W) and
+  monitor cycling on, instead of three halves-and-full-screen presets.
+
 ### Fixed
 
 - The grid panel closes when a display is connected, removed or rearranged, instead of placing the
