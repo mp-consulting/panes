@@ -34,6 +34,16 @@ import SwiftUI
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.store.refreshKeyboardLayout() }
         }
+        // A shortcut another app held is free once that app quits: take it then, instead of
+        // flagging it until the next settings change.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.store.refusedHotkeys.isEmpty else { return }
+                self.registerHotkeys()
+            }
+        }
 
         if store.isFirstRun || store.loadError != nil {
             showSettings()

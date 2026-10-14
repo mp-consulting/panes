@@ -18,6 +18,8 @@ All notable changes to Panes are listed here. The format follows
 
 - The grid panel closes when a display is connected, removed or rearranged, instead of placing the
   window with the old screen's size.
+- "Another app already uses this shortcut" clears as soon as the app holding the shortcut quits,
+  instead of staying until the next settings change.
 
 ## [1.2.0] - 2026-10-14
 

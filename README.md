@@ -168,7 +168,7 @@ Divvy's resize preview and monitor cycling are reproduced. These other Divvy opt
 | Symptom | Cause and fix |
 | --- | --- |
 | macOS asks for Accessibility although Panes is allowed | The build is signed ad-hoc. Run `scripts/create-signing-identity.sh`, rebuild, re-allow once. |
-| A shortcut shows "Another app already uses this shortcut" | Another app holds the key combination, often Divvy. Quit it or pick another shortcut. |
+| A shortcut shows "Another app already uses this shortcut" | Another app holds the key combination, often Divvy or a second copy of Panes. Quit it (Panes takes the shortcut as soon as it does) or pick another shortcut. |
 | A shortcut does nothing | The front app has no focused window (the Finder desktop, for example), or Accessibility is off. Panes beeps. |
 | `codesign` fails with "resource fork, Finder information, or similar detritus" | The build output is inside an iCloud-synced folder. `build-app.sh` builds in `~/Library/Caches/Panes`, so use the script, or pass `--scratch-path` to `swift build`. |
 
