@@ -106,6 +106,11 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
         #expect(try Config.decode(Data(json.utf8)).showResizePreview)
     }
 
+    @Test func configWithoutUpdateSettingChecksForUpdates() throws {
+        let json = #"{"grid":{"columns":4,"rows":4},"presets":[]}"#
+        #expect(try Config.decode(Data(json.utf8)).checkForUpdates)
+    }
+
     @Test func handEditedGridSizesAreBroughtIntoRange() throws {
         let json = #"""
             {"grid":{"columns":0,"rows":100000},"presets":[{"name":"Odd","area":
@@ -221,4 +226,57 @@ final class FakeShortcut: NSObject, NSCoding {
     }
 
     init?(coder: NSCoder) { nil }
+}
+
+@Suite struct UpdateTests {
+    func json(tag: String = "v1.2.0", asset: String = "Panes-1.2.0.dmg",
+              url: String = "https://github.com/mp-consulting/panes/releases/download/v1.2.0/Panes-1.2.0.dmg") -> Data {
+        Data(#"""
+            {"tag_name":"\#(tag)","html_url":"https://github.com/mp-consulting/panes/releases/tag/\#(tag)",
+             "draft":false,"assets":[{"name":"notes.txt","browser_download_url":"https://example.com/x"},
+             {"name":"\#(asset)","browser_download_url":"\#(url)"}]}
+            """#.utf8)
+    }
+
+    @Test func comparesVersionsNumerically() throws {
+        let v = { (s: String) in try #require(AppVersion(s)) }
+        #expect(try v("1.10.0") > v("1.9.0"))
+        #expect(try v("v1.1") == v("1.1.0"))
+        #expect(try v("2") > v("1.99.99"))
+        #expect(try !(v("1.1.0") < v("1.1.0")))
+        #expect(try v("v1.2.0").description == "1.2.0")
+    }
+
+    @Test func rejectsVersionsItCannotOrder() {
+        for text in ["", "1..2", "1.2.0-beta", "latest", "v", "1.2.3.4.5", "-1.0"] {
+            #expect(AppVersion(text) == nil, "\(text)")
+        }
+    }
+
+    @Test func readsTheLatestRelease() throws {
+        let release = try Release(gitHubJSON: json())
+        #expect(release.version == AppVersion("1.2.0"))
+        #expect(release.diskImageURL.absoluteString == "https://github.com/mp-consulting/panes/releases/download/v1.2.0/Panes-1.2.0.dmg")
+        #expect(release.pageURL.absoluteString == "https://github.com/mp-consulting/panes/releases/tag/v1.2.0")
+    }
+
+    @Test func refusesImagesFromAnywhereElse() {
+        #expect(throws: Release.Failure.noDiskImage) { try Release(gitHubJSON: json(asset: "Panes-1.1.0.dmg")) }
+        #expect(throws: Release.Failure.noDiskImage) {
+            try Release(gitHubJSON: json(url: "https://evil.example/mp-consulting/panes/releases/download/v1.2.0/Panes-1.2.0.dmg"))
+        }
+        #expect(throws: Release.Failure.noDiskImage) {
+            try Release(gitHubJSON: json(url: "http://github.com/mp-consulting/panes/releases/download/v1.2.0/Panes-1.2.0.dmg"))
+        }
+        #expect(throws: Release.Failure.badVersion("nightly")) { try Release(gitHubJSON: json(tag: "nightly")) }
+        #expect(throws: Release.Failure.unreadable) { try Release(gitHubJSON: Data("{}".utf8)) }
+    }
+
+    @Test func checksOnceADay() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        #expect(UpdateSchedule.isDue(lastCheck: nil, now: now))
+        #expect(!UpdateSchedule.isDue(lastCheck: now.addingTimeInterval(-3600), now: now))
+        #expect(UpdateSchedule.isDue(lastCheck: now.addingTimeInterval(-UpdateSchedule.interval), now: now))
+        #expect(UpdateSchedule.isDue(lastCheck: now.addingTimeInterval(3600), now: now))
+    }
 }

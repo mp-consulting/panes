@@ -62,12 +62,16 @@ public struct Config: Codable, Equatable, Sendable {
     public var presets: [Preset]
     /// While dragging across the grid (or hovering a preset), outline on screen where the window will land.
     public var showResizePreview: Bool
+    /// Ask GitHub once a day whether a newer release exists.
+    public var checkForUpdates: Bool
 
-    public init(grid: GridSize, gridHotkey: String? = nil, presets: [Preset], showResizePreview: Bool = true) {
+    public init(grid: GridSize, gridHotkey: String? = nil, presets: [Preset], showResizePreview: Bool = true,
+                checkForUpdates: Bool = true) {
         self.grid = grid
         self.gridHotkey = gridHotkey
         self.presets = presets
         self.showResizePreview = showResizePreview
+        self.checkForUpdates = checkForUpdates
     }
 
     // Fields added after the first release are optional, so older config files keep loading.
@@ -77,6 +81,7 @@ public struct Config: Codable, Equatable, Sendable {
         gridHotkey = try c.decodeIfPresent(String.self, forKey: .gridHotkey)
         presets = try c.decode([Preset].self, forKey: .presets)
         showResizePreview = try c.decodeIfPresent(Bool.self, forKey: .showResizePreview) ?? true
+        checkForUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkForUpdates) ?? true
     }
 
     /// Used when there is neither a config file nor a Divvy install to import from.
