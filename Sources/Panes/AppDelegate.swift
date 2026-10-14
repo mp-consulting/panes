@@ -33,7 +33,7 @@ import SwiftUI
             MainActor.assumeIsolated { self?.store.refreshKeyboardLayout() }
         }
 
-        if store.isFirstRun {
+        if store.isFirstRun || store.loadError != nil {
             showSettings()
         }
         if !WindowMover.isTrusted {

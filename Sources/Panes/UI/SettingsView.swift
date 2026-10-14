@@ -309,6 +309,7 @@ struct GeneralPane: View {
                     }
                     .buttonStyle(.glass)
                     if let importError { IssueLabel(message: importError) }
+                    if let loadError = store.loadError { IssueLabel(message: loadError) }
                     if let saveError = store.saveError { IssueLabel(message: "Couldn't save: \(saveError)") }
                 }
             }

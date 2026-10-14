@@ -90,7 +90,8 @@ modifier.
 
 Settings are saved as JSON in `~/Library/Application Support/Panes/config.json`. Settings → General has
 a **Show in Finder** button. The app reads the file at launch and rewrites it on every change, so quit
-Panes before editing it by hand.
+Panes before editing it by hand. If the file can't be read at launch, Panes renames it to
+`config-unreadable-<date>.json`, starts from Divvy's settings or the defaults, and says so in Settings.
 
 ```json
 {

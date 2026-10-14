@@ -26,6 +26,8 @@ import PanesCore
         didSet { if isRecordingShortcut != oldValue { onChange?() } }
     }
     private(set) var saveError: String?
+    /// Set when `config.json` existed but couldn't be read; the file is kept under another name.
+    private(set) var loadError: String?
     /// Whether this launch created the config (first run), so the app can show what it imported.
     private(set) var isFirstRun = false
 
@@ -35,12 +37,43 @@ import PanesCore
     init() {
         let layout = KeyboardLayout.current()
         self.layout = layout
-        if let data = try? Data(contentsOf: Self.fileURL), let config = try? Config.decode(data) {
-            self.config = config
-        } else {
+        let data = try? Data(contentsOf: Self.fileURL)
+        do {
+            guard let data else { throw CocoaError(.fileReadNoSuchFile) }
+            self.config = try Config.decode(data)
+        } catch {
+            if data != nil {
+                // A hand-edited file with a typo: keep it so the edits aren't lost to the rewrite below.
+                loadError = Self.setAsideUnreadableConfig(error)
+            }
             self.config = (try? Self.importFromDivvy(layout: layout)) ?? .fallback
-            isFirstRun = true
+            isFirstRun = data == nil
             save()
+        }
+    }
+
+    /// Renames the unreadable `config.json` and returns the message the settings show.
+    private static func setAsideUnreadableConfig(_ error: Error) -> String {
+        let stamp = Date.now.formatted(.iso8601.year().month().day().dateSeparator(.dash)
+            .time(includingFractionalSeconds: false).timeSeparator(.omitted))
+        let kept = directory.appending(path: "config-unreadable-\(stamp).json")
+        let reason = (error as? DecodingError).map(Self.describe) ?? error.localizedDescription
+        do {
+            try FileManager.default.moveItem(at: fileURL, to: kept)
+            return "config.json couldn't be read (\(reason)). It was kept as \(kept.lastPathComponent)."
+        } catch {
+            return "config.json couldn't be read (\(reason)) and was replaced."
+        }
+    }
+
+    private static func describe(_ error: DecodingError) -> String {
+        switch error {
+        case let .dataCorrupted(context), let .keyNotFound(_, context),
+             let .typeMismatch(_, context), let .valueNotFound(_, context):
+            let path = context.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue }
+            return path.isEmpty ? context.debugDescription : "\(path.joined(separator: ".")): \(context.debugDescription)"
+        @unknown default:
+            return error.localizedDescription
         }
     }
 
