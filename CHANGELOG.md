@@ -8,6 +8,9 @@ All notable changes to Panes are listed here. The format follows
 
 ### Changed
 
+- The bundle identifier is now `com.mpconsulting.Panes`. macOS treats this as a new app: allow it
+  once more in Privacy & Security → Accessibility, turn **Open Panes at login** back on if you used
+  it, and remove the old Panes entries from both lists.
 - A shortcut whose only modifier is shift, such as `shift+a`, is refused (except on F1–F15): as a
   global hotkey it took over typing that capital, or selecting text, in every app. Existing ones are
   flagged in Settings.
