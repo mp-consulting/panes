@@ -6,6 +6,8 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-14
+
 ### Added
 
 - Update checks: release builds ask GitHub once a day for a newer release, show it in the grid panel,
@@ -53,6 +55,7 @@ All notable changes to Panes are listed here. The format follows
 - Configuration saved as JSON in `~/Library/Application Support/Panes/config.json`.
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
 
-[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/mp-consulting/panes/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/mp-consulting/panes/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mp-consulting/panes/releases/tag/v1.0.0
