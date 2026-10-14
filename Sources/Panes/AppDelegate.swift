@@ -52,29 +52,47 @@ import SwiftUI
 
     // MARK: Hotkeys
 
+    /// One registration: the preset that owns it (`nil` for the grid hotkey) and what it does.
+    private struct Hotkey: Equatable {
+        let owner: UUID?
+        let combo: KeyCombo
+        /// The area a preset moves the window to; `nil` opens the grid.
+        let area: GridSelection?
+    }
+
+    /// What was last registered. Most edits (a preset's name, the grid size) leave the hotkeys as
+    /// they are, and re-registering on each keystroke would churn every Carbon registration.
+    private var registeredHotkeys: [Hotkey]?
+
     private func registerHotkeys() {
         guard !store.isRecordingShortcut else {
             HotkeyCenter.shared.unregisterAll()
+            registeredHotkeys = nil
             return
         }
-        var bindings: [(combo: KeyCombo, action: () -> Void)] = []
-        var owners: [UUID?] = []
-
+        var hotkeys: [Hotkey] = []
         if let key = store.config.gridHotkey, let combo = try? KeyCombo(parsing: key, layout: store.layout) {
-            bindings.append((combo, { [weak self] in self?.showGrid() }))
-            owners.append(nil)
+            hotkeys.append(Hotkey(owner: nil, combo: combo, area: nil))
         }
-        var taken = Set(bindings.map(\.combo))
+        var taken = Set(hotkeys.map(\.combo))
         for preset in store.config.presets where preset.enabled && preset.area.isValid {
             guard let combo = try? KeyCombo(parsing: preset.key, layout: store.layout), !taken.contains(combo) else { continue }
             taken.insert(combo)
-            let area = preset.area
-            bindings.append((combo, { [weak self] in self?.moveFrontmost(to: area) }))
-            owners.append(preset.id)
+            hotkeys.append(Hotkey(owner: preset.id, combo: combo, area: preset.area))
         }
+        // Refused combos are retried on every change, in case the app holding them has quit.
+        guard hotkeys != registeredHotkeys || !store.refusedHotkeys.isEmpty else { return }
+        registeredHotkeys = hotkeys
 
+        let bindings = hotkeys.map { hotkey -> (combo: KeyCombo, action: () -> Void) in
+            if let area = hotkey.area {
+                (hotkey.combo, { [weak self] in self?.moveFrontmost(to: area) })
+            } else {
+                (hotkey.combo, { [weak self] in self?.showGrid() })
+            }
+        }
         let refused = Set(HotkeyCenter.shared.replace(with: bindings))
-        let refusedOwners = Set(zip(bindings, owners).filter { refused.contains($0.0.combo) }.map(\.1))
+        let refusedOwners = Set(hotkeys.filter { refused.contains($0.combo) }.map(\.owner))
         if store.refusedHotkeys != refusedOwners { store.refusedHotkeys = refusedOwners }
     }
 
