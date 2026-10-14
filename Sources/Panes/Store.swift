@@ -58,8 +58,9 @@ import PanesCore
 
     /// Renames the unreadable `config.json` and returns the message the settings show.
     private static func setAsideUnreadableConfig(_ error: Error) -> String {
-        let stamp = Date.now.formatted(.iso8601.year().month().day().dateSeparator(.dash)
-            .time(includingFractionalSeconds: false).timeSeparator(.omitted))
+        // Local time, so the name matches the clock of the person looking for the file.
+        let stamp = Date.now.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day()
+            .dateSeparator(.dash).time(includingFractionalSeconds: false).timeSeparator(.omitted))
         let kept = directory.appending(path: "config-unreadable-\(stamp).json")
         let reason = (error as? DecodingError).map(Self.describe) ?? error.localizedDescription
         do {
