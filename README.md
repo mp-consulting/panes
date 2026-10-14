@@ -168,11 +168,11 @@ the new version. The workflow needs these repository secrets:
 | --- | --- |
 | `DEVELOPER_ID_CERTIFICATE` | Your **Developer ID Application** certificate and key, exported from Keychain Access as `.p12`, then `base64 -i cert.p12 \| pbcopy` |
 | `DEVELOPER_ID_CERTIFICATE_PASSWORD` | The password you gave the `.p12` export |
-| `APPLE_ID` | The Apple Account email of your developer team, for notarization |
-| `APPLE_TEAM_ID` | Your 10-character team ID (developer.apple.com → Membership) |
-| `APPLE_APP_PASSWORD` | An app-specific password for that account (account.apple.com → Sign-In and Security) |
+| `APPLE_API_KEY` | The contents of an App Store Connect API key (`AuthKey_<id>.p8`), for notarization: `gh secret set APPLE_API_KEY < AuthKey_<id>.p8` |
+| `APPLE_API_KEY_ID` | That key's ID (the `<id>` in the file name) |
+| `APPLE_API_ISSUER` | The issuer ID shown above the key list (App Store Connect → Users and Access → Integrations) |
 
-Without `APPLE_ID` the DMG is signed but not notarized, and Gatekeeper blocks it on other Macs.
+Without `APPLE_API_KEY` the DMG is signed but not notarized, and Gatekeeper blocks it on other Macs.
 A release signed with Developer ID is a different signature from a local build, so macOS asks for
 Accessibility access once more after switching.
 

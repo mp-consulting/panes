@@ -17,7 +17,7 @@ jobs:
     env:
       TAG: ${{ github.event.release.tag_name }}
       # Notarization is skipped when this secret is missing; the DMG is then signed only.
-      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
     steps:
       - uses: actions/checkout@v5
 
@@ -56,13 +56,16 @@ jobs:
           echo "DMG=$DMG" >> "$GITHUB_ENV"
 
       - name: Notarize
-        if: env.APPLE_ID != ''
+        if: env.APPLE_API_KEY != ''
         env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_APP_PASSWORD" --wait
+          KEY="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY_ID.p8"
+          printf '%s\n' "$APPLE_API_KEY" > "$KEY"
+          xcrun notarytool submit "$DMG" --key "$KEY" --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" --wait
+          rm "$KEY"
           xcrun stapler staple "$DMG"
           spctl --assess --type open --context context:primary-signature --verbose "$DMG"
 
