@@ -6,6 +6,12 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Update checks: release builds ask GitHub once a day for a newer release, show it in the grid panel,
+  the menu and Settings, and install it in one click after checking that the download is notarized and
+  signed by Panes's developer. The check can be turned off in Settings → General.
+
 ## [1.1.0] - 2026-10-14
 
 ### Changed

@@ -17,6 +17,7 @@ final class FloatingPanel: NSPanel {
 /// The Divvy-style grid that opens from the menu-bar icon or the grid hotkey.
 @MainActor final class GridPanelController: NSObject, NSWindowDelegate {
     private let store: Store
+    private let updater: Updater
     private let apply: (NSRunningApplication, GridSelection) -> Void
     private let openSettings: () -> Void
     private var panel: FloatingPanel?
@@ -25,9 +26,11 @@ final class FloatingPanel: NSPanel {
     private var targetArea: CGRect = .zero
 
     init(store: Store,
+         updater: Updater,
          apply: @escaping (NSRunningApplication, GridSelection) -> Void,
          openSettings: @escaping () -> Void) {
         self.store = store
+        self.updater = updater
         self.apply = apply
         self.openSettings = openSettings
     }
@@ -46,7 +49,7 @@ final class FloatingPanel: NSPanel {
         let aspect = screen.visibleFrame.width / max(screen.visibleFrame.height, 1)
 
         let view = GridPanelView(
-            store: store, target: target, aspect: aspect,
+            store: store, updater: updater, target: target, aspect: aspect,
             // Wide screens get a wider panel, so the grid keeps a usable height (~230pt).
             width: min(max(230 * aspect + 32, 380), 760),
             apply: { [weak self] selection in
@@ -109,6 +112,7 @@ final class FloatingPanel: NSPanel {
 
 struct GridPanelView: View {
     let store: Store
+    let updater: Updater
     let target: NSRunningApplication?
     let aspect: CGFloat
     let width: CGFloat
@@ -156,6 +160,13 @@ struct GridPanelView: View {
                 .font(.headline)
                 .lineLimit(1)
             Spacer()
+            if let release = updater.availableRelease {
+                Button("Update", systemImage: "arrow.down.circle.fill", action: openSettings)
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.circle)
+                    .help("Panes \(release.version.description) is available")
+            }
             Button("Settings", systemImage: "gearshape", action: openSettings)
                 .labelStyle(.iconOnly)
                 .buttonStyle(.glass)

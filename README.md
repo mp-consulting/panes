@@ -31,6 +31,8 @@ presets.
 - **Keyboard-layout aware.** Shortcuts follow the active layout, so a Divvy shortcut stored as the
   QWERTY "Z" key shows as ⌃⌥⌘W on AZERTY, which is the key it really is.
 - **Multiple screens.** Windows are placed on the screen they're mostly on, inside the menu bar and Dock.
+- **Updates itself.** Release builds check GitHub once a day and install a new version in one click,
+  after checking its signature.
 - Menu-bar only, with no Dock icon except while Settings is open. Optionally opens at login.
 
 | General | Preset editor |
@@ -43,6 +45,10 @@ presets.
 - **Xcode** with Swift 6.2 or later, to build.
 
 ## Install
+
+Download `Panes-<version>.dmg` from the [latest release](https://github.com/mp-consulting/panes/releases/latest),
+open it and drag Panes to Applications. Releases are signed and notarized, and update themselves (see
+[Updates](#updates)). To build from source instead:
 
 ```sh
 scripts/create-signing-identity.sh   # once per Mac, see "Signing" below
@@ -87,6 +93,23 @@ press a key combination to record it. Escape cancels, and × clears it. A shortc
 opt; shift alone is only enough on F1–F15, since elsewhere it would take over typing capitals or
 selecting text.
 
+## Updates
+
+Release builds ask GitHub once a day whether a newer release exists: one request to `api.github.com`,
+which sees your IP address and, in the User-Agent, the Panes version. Nothing else is sent. When there
+is one, an arrow appears in the grid panel, the menu-bar menu offers it, and Settings → General →
+Updates shows **Install and Relaunch**. The daily check can be turned off there; **Check Now** still
+works.
+
+Before replacing anything, Panes downloads the release's disk image and checks that it is notarized
+and signed with the developer's Developer ID, then that the app inside carries Panes's identifier, the
+same signature and the release's version. It then swaps the app in place and relaunches. Accessibility
+access carries over, since the signature is the same. Panes must be able to write to the folder it
+runs from: when it can't, or when it runs straight from the disk image, Settings offers **Download**
+instead.
+
+Builds you make yourself (ad-hoc or **Panes Local Signing**) never check for updates.
+
 ## Configuration file
 
 Settings are saved as JSON in `~/Library/Application Support/Panes/config.json`. Settings → General has
@@ -99,6 +122,7 @@ Panes before editing it by hand. If the file can't be read at launch, Panes rena
   "grid": { "columns": 7, "rows": 6 },
   "gridHotkey": "ctrl+opt+cmd+space",
   "showResizePreview": true,
+  "checkForUpdates": true,
   "presets": [
     {
       "name": "Left",
@@ -119,6 +143,7 @@ Panes before editing it by hand. If the file can't be read at launch, Panes rena
   `tab`, `escape`, `delete`, `home`, `end`, `pageup`, `pagedown`, `f1`–`f15`, `keypad0`–`keypad9`. An
   empty `key` makes a button-only preset.
 - `id` and `enabled` can be left out; Panes fills them in.
+- `checkForUpdates` turns the daily update check on or off. It's on when left out.
 
 ## Divvy settings that are not carried over
 
@@ -150,8 +175,8 @@ The project is a Swift package with no dependencies:
 
 | Path | What it holds |
 | --- | --- |
-| `Sources/PanesCore/` | Pure logic: grid geometry, shortcut parsing, the config format, the Divvy importer. Fully unit-tested. |
-| `Sources/Panes/System/` | macOS plumbing: Carbon global hotkeys, the Accessibility window mover, keyboard-layout lookup. |
+| `Sources/PanesCore/` | Pure logic: grid geometry, shortcut parsing, the config format, the Divvy importer, release versions. Fully unit-tested. |
+| `Sources/Panes/System/` | macOS plumbing: Carbon global hotkeys, the Accessibility window mover, keyboard-layout lookup, the updater. |
 | `Sources/Panes/UI/` | SwiftUI and AppKit: the grid panel, the resize preview, the settings window, the shortcut recorder. |
 | `Sources/Panes/AppDelegate.swift`, `Store.swift` | The menu-bar item, hotkey wiring, and the config store that saves to disk. |
 | `Tests/PanesCoreTests/` | Tests for `PanesCore`, including an import of a Divvy-shaped keyed archive. |

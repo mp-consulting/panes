@@ -14,6 +14,7 @@ struct SettingsView: View {
     static let sidebarWidth: CGFloat = 240
 
     @Bindable var store: Store
+    let updater: Updater
     @State private var page: SettingsPage?
     /// The last page shown, so the window reopens where it was left: "general" or a preset id.
     @AppStorage("settingsPage") private var savedPage = "general"
@@ -35,10 +36,10 @@ struct SettingsView: View {
                                      onDuplicate: { duplicate(id) }, onDelete: { delete(id) })
                             .id(id)
                     } else {
-                        GeneralPane(store: store)
+                        GeneralPane(store: store, updater: updater)
                     }
                 case .general, nil:
-                    GeneralPane(store: store)
+                    GeneralPane(store: store, updater: updater)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -80,6 +81,14 @@ struct SettingsView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+
+            // In the sidebar so it shows whichever page is open.
+            if let release = updater.availableRelease {
+                Button("Panes \(release.version.description) is available", systemImage: "arrow.down.circle.fill") { page = .general }
+                    .buttonStyle(.glassProminent)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+            }
 
             Button("New Preset", systemImage: "plus") {
                 withAnimation { page = .preset(store.addPreset()) }
@@ -243,6 +252,7 @@ struct PresetEditor: View {
 
 struct GeneralPane: View {
     @Bindable var store: Store
+    let updater: Updater
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchError: String?
     @State private var confirmImport = false
@@ -296,6 +306,8 @@ struct GeneralPane: View {
                         .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
                     if let launchError { IssueLabel(message: launchError) }
                 }
+
+                UpdatesCard(store: store, updater: updater)
 
                 GlassCard(title: "Presets File", systemImage: "doc.text") {
                     Text(Store.fileURL.path(percentEncoded: false))
@@ -369,6 +381,75 @@ struct GeneralPane: View {
         } catch {
             launchError = error.localizedDescription
             launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+    }
+}
+
+// MARK: - Updates
+
+struct UpdatesCard: View {
+    @Bindable var store: Store
+    let updater: Updater
+
+    var body: some View {
+        GlassCard(title: "Updates", systemImage: "arrow.down.circle") {
+            if updater.isEnabled {
+                Toggle("Check for updates once a day", isOn: $store.config.checkForUpdates)
+                    .toggleStyle(.switch)
+                    .onChange(of: store.config.checkForUpdates) { _, enabled in
+                        if enabled { Task { await updater.checkIfDue() } }
+                    }
+                status
+            } else {
+                Text("This is a development build, so it doesn't update itself. Releases do.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        let version = updater.currentVersion.map { "Panes \($0)" } ?? "This version"
+        switch updater.state {
+        case .idle, .upToDate, .failed:
+            HStack(spacing: 12) {
+                if case .upToDate = updater.state {
+                    Label("\(version) is the latest.", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else {
+                    Text("You have \(version).").foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Check Now") { Task { await updater.check() } }
+                    .buttonStyle(.glass)
+            }
+            if case let .failed(message) = updater.state { IssueLabel(message: message) }
+        case .checking:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Checking…").foregroundStyle(.secondary)
+            }
+        case let .available(release):
+            Text("Panes \(release.version.description) is available. You have \(version).")
+            HStack {
+                if let blocker = updater.installBlocker {
+                    Button("Download", systemImage: "safari") { NSWorkspace.shared.open(release.pageURL) }
+                        .buttonStyle(.glassProminent)
+                    Text(blocker).font(.callout).foregroundStyle(.secondary)
+                } else {
+                    Button("Install and Relaunch", systemImage: "arrow.down.circle") {
+                        Task { await updater.install(release) }
+                    }
+                    .buttonStyle(.glassProminent)
+                }
+                Button("Release Notes") { NSWorkspace.shared.open(release.pageURL) }
+                    .buttonStyle(.glass)
+            }
+        case let .installing(release):
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Downloading and checking Panes \(release.version.description)…").foregroundStyle(.secondary)
+            }
         }
     }
 }

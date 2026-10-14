@@ -25,10 +25,14 @@ Never create a `.build/` in the repo. `--install` replaces the running app, so a
   It must not import AppKit or Carbon: the keyboard layout is injected as a `KeyLayout`.
 - `Sources/Panes/`: the app, all `@MainActor`. `AppDelegate` owns the status item, wires hotkeys and
   moves windows; `Store` is the single source of truth and saves `config.json` (debounced 300 ms,
-  flushed on quit and when Settings closes). Its `onChange` re-registers every hotkey.
+  flushed on quit and when Settings closes). Its `onChange` re-registers the hotkeys when they changed.
 - `System/HotkeyCenter` registers shortcuts with Carbon `RegisterEventHotKey` (no Accessibility needed,
   key press consumed). `System/WindowMover` moves the focused window of another app via the
   Accessibility API.
+- `System/Updater` checks GitHub's latest release daily and installs it on request. A download carries
+  no quarantine flag, so its code-signing requirements (notarized image, team 4HWBUF2R8D, identifier
+  `com.mpconsulting.Panes`) are the only gate: never loosen them. Release parsing lives in
+  `PanesCore/Update.swift`.
 
 ## Pitfalls
 

@@ -5,10 +5,12 @@ import SwiftUI
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let store = Store()
+    private lazy var updater = Updater(store: store)
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private lazy var gridPanel = GridPanelController(
         store: store,
+        updater: updater,
         apply: { [weak self] app, selection in self?.move(app, to: selection) },
         openSettings: { [weak self] in self?.showSettings() }
     )
@@ -39,6 +41,7 @@ import SwiftUI
         if !WindowMover.isTrusted {
             WindowMover.requestTrust()
         }
+        updater.start()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -130,6 +133,10 @@ import SwiftUI
     private func showMenu() {
         gridPanel.close()
         let menu = NSMenu()
+        if let release = updater.availableRelease {
+            menu.addItem(withTitle: "Update to Panes \(release.version)…", action: #selector(showSettingsFromMenu), keyEquivalent: "").target = self
+            menu.addItem(.separator())
+        }
         menu.addItem(withTitle: "Show Grid", action: #selector(showGridFromMenu), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(showSettingsFromMenu), keyEquivalent: ",").target = self
         menu.addItem(.separator())
@@ -164,7 +171,7 @@ import SwiftUI
             // inside the floating sidebar instead of onto its top edge.
             window.toolbar = NSToolbar(identifier: "PanesSettings")
             window.toolbarStyle = .unified
-            window.contentViewController = NSHostingController(rootView: SettingsView(store: store))
+            window.contentViewController = NSHostingController(rootView: SettingsView(store: store, updater: updater))
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.collectionBehavior = [.fullScreenNone]
