@@ -6,6 +6,8 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-14
+
 ### Added
 
 - Drag-to-place grid, opened from the menu-bar icon or the grid hotkey, centred on the screen of the
@@ -22,3 +24,6 @@ All notable changes to Panes are listed here. The format follows
 - Open at login option.
 - Configuration saved as JSON in `~/Library/Application Support/Panes/config.json`.
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
+
+[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/mp-consulting/panes/releases/tag/v1.0.0
