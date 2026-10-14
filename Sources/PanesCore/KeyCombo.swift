@@ -39,14 +39,17 @@ public struct KeyCombo: Equatable, Hashable, Sendable {
 /// (arrows, F-keys, space…) don't depend on the layout and are handled by `KeyCombo` itself.
 public struct KeyLayout: Sendable {
     public let characterForKeyCode: [UInt32: String]
+    /// The reverse map, built once: every shortcut parse looks a character up.
+    private let keyCodeForCharacter: [String: UInt32]
 
     public init(characterForKeyCode: [UInt32: String]) {
         self.characterForKeyCode = characterForKeyCode
+        // Several codes can type the same character (main row and keypad); keep the lowest.
+        keyCodeForCharacter = Dictionary(characterForKeyCode.map { ($1, $0) }, uniquingKeysWith: min)
     }
 
     public func keyCode(for character: String) -> UInt32? {
-        // Several codes can type the same character (main row and keypad); prefer the lowest.
-        characterForKeyCode.filter { $0.value == character }.keys.min()
+        keyCodeForCharacter[character]
     }
 
     /// US ANSI, for tests and as a fallback when the layout can't be read.
@@ -89,6 +92,9 @@ extension KeyCombo {
         "keypad5": 87, "keypad6": 88, "keypad7": 89, "keypad8": 91, "keypad9": 92,
         "keypad.": 65, "keypad*": 67, "keypad+": 69, "keypad/": 75, "keypad-": 78, "keypad=": 81,
     ]
+
+    /// The reverse of `namedKeys`; a code with two names gets the alphabetically first, so output is stable.
+    static let nameForKeyCode = Dictionary(namedKeys.map { ($1, $0) }, uniquingKeysWith: min)
 
     /// F1–F15: the only keys where shift alone is enough, since they type nothing.
     static let functionKeyCodes = Set(namedKeys.filter { $0.key.hasPrefix("f") && $0.key.dropFirst().allSatisfy(\.isNumber) }.values)
@@ -165,7 +171,7 @@ extension KeyCombo {
 
     private func keyName(layout: KeyLayout) -> String {
         if let character = layout.characterForKeyCode[keyCode] { return character }
-        if let name = Self.namedKeys.filter({ $0.value == keyCode }).keys.sorted().first { return name }
+        if let name = Self.nameForKeyCode[keyCode] { return name }
         return "keycode\(keyCode)"
     }
 }
