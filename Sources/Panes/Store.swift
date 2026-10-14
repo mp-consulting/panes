@@ -76,7 +76,9 @@ import PanesCore
         case let .dataCorrupted(context), let .keyNotFound(_, context),
              let .typeMismatch(_, context), let .valueNotFound(_, context):
             let path = context.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue }
-            return path.isEmpty ? context.debugDescription : "\(path.joined(separator: ".")): \(context.debugDescription)"
+            // Foundation's descriptions end in a full stop; the message wraps this one in parentheses.
+            let detail = context.debugDescription.hasSuffix(".") ? String(context.debugDescription.dropLast()) : context.debugDescription
+            return path.isEmpty ? detail : "\(path.joined(separator: ".")): \(detail)"
         @unknown default:
             return error.localizedDescription
         }

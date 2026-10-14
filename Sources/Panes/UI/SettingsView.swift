@@ -254,6 +254,9 @@ struct GeneralPane: View {
                 Text("Panes")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
 
+                // First thing on the page: it's why Settings opened at launch.
+                if let loadError = store.loadError { IssueLabel(message: loadError) }
+
                 accessibilityCard
 
                 GlassCard(title: "Grid Panel", systemImage: "square.grid.3x3") {
@@ -309,7 +312,6 @@ struct GeneralPane: View {
                     }
                     .buttonStyle(.glass)
                     if let importError { IssueLabel(message: importError) }
-                    if let loadError = store.loadError { IssueLabel(message: loadError) }
                     if let saveError = store.saveError { IssueLabel(message: "Couldn't save: \(saveError)") }
                 }
             }
