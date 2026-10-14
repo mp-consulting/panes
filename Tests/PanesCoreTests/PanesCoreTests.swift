@@ -111,6 +111,11 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
         #expect(try Config.decode(Data(json.utf8)).checkForUpdates)
     }
 
+    @Test func configWithoutCycleSettingKeepsWindowsOnTheirScreen() throws {
+        let json = #"{"grid":{"columns":4,"rows":4},"presets":[]}"#
+        #expect(try !Config.decode(Data(json.utf8)).cycleScreens)
+    }
+
     @Test func handEditedGridSizesAreBroughtIntoRange() throws {
         let json = #"""
             {"grid":{"columns":0,"rows":100000},"presets":[{"name":"Odd","area":
@@ -154,6 +159,49 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
         let small = one.resized(columns: 2, rows: 2)
         #expect(small.isValid)
         #expect(small.minColumn == 1 && small.maxColumn == 1 && small.minRow == 0 && small.maxRow == 0)
+    }
+}
+
+@Suite struct ScreenTests {
+    // Accessibility coordinates: a laptop as primary, a taller monitor to its left, one above it.
+    let laptop = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    let left = CGRect(x: -2560, y: -458, width: 2560, height: 1440)
+    let above = CGRect(x: 0, y: -1080, width: 1920, height: 1080)
+    var screens: [CGRect] { [laptop, left, above] }
+
+    @Test func windowBelongsToTheScreenHoldingMostOfIt() {
+        let straddling = CGRect(x: -300, y: 100, width: 1000, height: 600)
+        #expect(ScreenLayout.index(holdingMostOf: straddling, in: screens) == 0)
+        #expect(ScreenLayout.index(holdingMostOf: straddling.offsetBy(dx: -500, dy: 0), in: screens) == 1)
+        #expect(ScreenLayout.index(holdingMostOf: CGRect(x: 5000, y: 0, width: 100, height: 100), in: screens) == nil)
+    }
+
+    @Test func nextScreenGoesLeftToRightThenTopToBottomAndWraps() {
+        // Order: left (x -2560), above (x 0, y -1080), laptop (x 0, y 0).
+        #expect(ScreenLayout.index(after: 1, in: screens) == 2)
+        #expect(ScreenLayout.index(after: 2, in: screens) == 0)
+        #expect(ScreenLayout.index(after: 0, in: screens) == 1)
+        #expect(ScreenLayout.index(after: 0, in: [laptop]) == 0)
+    }
+
+    @Test func miniatureKeepsTheArrangementAndFits() {
+        let tiles = ScreenLayout.miniature(of: screens, fitting: CGSize(width: 100, height: 40))
+        let bounds = tiles.reduce(CGRect.null) { $0.union($1) }
+        #expect(bounds.width <= 100.001 && bounds.height <= 40.001)
+        #expect(abs(bounds.midX - 50) < 0.001 && abs(bounds.midY - 20) < 0.001)
+        #expect(tiles[1].maxX <= tiles[0].minX + 0.001) // left stays left
+        #expect(abs(tiles[2].maxY - tiles[0].minY) < 0.001) // above sits on the laptop
+        #expect(abs(tiles[0].width / tiles[0].height - laptop.width / laptop.height) < 0.001)
+    }
+
+    @Test func repeatedPlacementNeedsTheSameAppAreaAndFrame() {
+        let half = GridSelection(columns: 2, rows: 1, start: Cell(column: 0, row: 0), end: Cell(column: 0, row: 0))
+        let other = GridSelection(columns: 2, rows: 1, start: Cell(column: 1, row: 0), end: Cell(column: 1, row: 0))
+        let placed = Placement(processID: 42, area: half, frame: CGRect(x: 0, y: 25, width: 756, height: 957))
+        #expect(placed.isRepeated(area: half, processID: 42, frame: CGRect(x: 0.5, y: 25, width: 756, height: 957)))
+        #expect(!placed.isRepeated(area: other, processID: 42, frame: placed.frame))
+        #expect(!placed.isRepeated(area: half, processID: 7, frame: placed.frame))
+        #expect(!placed.isRepeated(area: half, processID: 42, frame: placed.frame.offsetBy(dx: 40, dy: 0)))
     }
 }
 

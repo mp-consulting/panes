@@ -64,14 +64,18 @@ public struct Config: Codable, Equatable, Sendable {
     public var showResizePreview: Bool
     /// Ask GitHub once a day whether a newer release exists.
     public var checkForUpdates: Bool
+    /// Pressing a preset's shortcut again, with the window still where it put it, moves the window to
+    /// the same area of the next screen.
+    public var cycleScreens: Bool
 
     public init(grid: GridSize, gridHotkey: String? = nil, presets: [Preset], showResizePreview: Bool = true,
-                checkForUpdates: Bool = true) {
+                checkForUpdates: Bool = true, cycleScreens: Bool = false) {
         self.grid = grid
         self.gridHotkey = gridHotkey
         self.presets = presets
         self.showResizePreview = showResizePreview
         self.checkForUpdates = checkForUpdates
+        self.cycleScreens = cycleScreens
     }
 
     // Fields added after the first release are optional, so older config files keep loading.
@@ -82,6 +86,7 @@ public struct Config: Codable, Equatable, Sendable {
         presets = try c.decode([Preset].self, forKey: .presets)
         showResizePreview = try c.decodeIfPresent(Bool.self, forKey: .showResizePreview) ?? true
         checkForUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkForUpdates) ?? true
+        cycleScreens = try c.decodeIfPresent(Bool.self, forKey: .cycleScreens) ?? false
     }
 
     /// Used when there is neither a config file nor a Divvy install to import from.
