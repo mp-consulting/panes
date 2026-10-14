@@ -6,6 +6,8 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-14
+
 ### Added
 
 - The grid panel shows your screens as icons, the main screen first, when more than one is connected.
@@ -76,7 +78,8 @@ All notable changes to Panes are listed here. The format follows
 - Configuration saved as JSON in `~/Library/Application Support/Panes/config.json`.
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
 
-[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/mp-consulting/panes/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/mp-consulting/panes/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/mp-consulting/panes/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mp-consulting/panes/releases/tag/v1.0.0
