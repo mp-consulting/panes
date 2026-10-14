@@ -6,6 +6,12 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A shortcut whose only modifier is shift, such as `shift+a`, is refused (except on F1–F15): as a
+  global hotkey it took over typing that capital, or selecting text, in every app. Existing ones are
+  flagged in Settings.
+
 ### Fixed
 
 - A `config.json` that can't be read, such as one with a typo from a hand edit, is kept as

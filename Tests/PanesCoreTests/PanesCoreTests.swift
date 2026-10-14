@@ -71,6 +71,13 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
         #expect(throws: KeyComboError.noModifier("left")) { try KeyCombo(parsing: "left", layout: .usANSI) }
         #expect(throws: KeyComboError.empty) { try KeyCombo(parsing: "cmd+", layout: .usANSI) }
         #expect(throws: KeyComboError.unknownKey("+")) { try KeyCombo(parsing: "ctrl++", layout: .usANSI) }
+        #expect(throws: KeyComboError.shiftOnly("shift+a")) { try KeyCombo(parsing: "shift+a", layout: .usANSI) }
+        #expect(throws: KeyComboError.shiftOnly("shift+left")) { try KeyCombo(parsing: "shift+left", layout: .usANSI) }
+    }
+
+    @Test func shiftAloneIsEnoughOnFunctionKeys() throws {
+        #expect(try KeyCombo(parsing: "shift+f5", layout: .usANSI) == KeyCombo(keyCode: 96, modifiers: .shift))
+        #expect(KeyCombo.functionKeyCodes.count == 15)
     }
 
     @Test func cocoaFlagsFromDivvy() {

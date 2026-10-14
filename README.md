@@ -83,8 +83,9 @@ list once and allow the new one.
 
 In the **preset editor**, drag on the grid to set the area. Columns and rows can change per preset,
 and the selected area is rescaled to stay the same part of the screen. Click the shortcut button and
-press a key combination to record it. Escape cancels, and × clears it. A shortcut needs at least one
-modifier.
+press a key combination to record it. Escape cancels, and × clears it. A shortcut needs cmd, ctrl or
+opt; shift alone is only enough on F1–F15, since elsewhere it would take over typing capitals or
+selecting text.
 
 ## Configuration file
 

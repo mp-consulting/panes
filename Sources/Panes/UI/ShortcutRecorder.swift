@@ -54,11 +54,17 @@ struct ShortcutRecorder: View {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let combo = KeyCombo(keyCode: UInt32(event.keyCode), cocoaFlags: flags.rawValue)
-            if combo.modifiers.isEmpty {
-                if event.keyCode == 53 { stop() } else { NSSound.beep() } // escape cancels
+            if event.keyCode == 53, combo.modifiers.isEmpty { // escape cancels
+                stop()
                 return nil
             }
-            key = combo.configString(layout: store.layout)
+            // The parser holds the rules (a modifier, and more than shift); a combo it rejects never registers.
+            let string = combo.configString(layout: store.layout)
+            guard (try? KeyCombo(parsing: string, layout: store.layout)) != nil else {
+                NSSound.beep()
+                return nil
+            }
+            key = string
             stop()
             return nil
         }

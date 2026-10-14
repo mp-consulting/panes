@@ -64,6 +64,7 @@ public enum KeyComboError: Error, Equatable, CustomStringConvertible {
     case unknownModifier(String)
     case unknownKey(String)
     case noModifier(String)
+    case shiftOnly(String)
 
     public var description: String {
         switch self {
@@ -71,6 +72,7 @@ public enum KeyComboError: Error, Equatable, CustomStringConvertible {
         case let .unknownModifier(m): "unknown modifier \"\(m)\" (use cmd, ctrl, opt, shift)"
         case let .unknownKey(k): "unknown key \"\(k)\" for the current keyboard layout"
         case let .noModifier(s): "\"\(s)\" has no modifier; a global shortcut without one would swallow that key everywhere"
+        case let .shiftOnly(s): "\"\(s)\" only uses shift; it would take over that key's capital or selection everywhere (add cmd, ctrl or opt)"
         }
     }
 }
@@ -87,6 +89,9 @@ extension KeyCombo {
         "keypad5": 87, "keypad6": 88, "keypad7": 89, "keypad8": 91, "keypad9": 92,
         "keypad.": 65, "keypad*": 67, "keypad+": 69, "keypad/": 75, "keypad-": 78, "keypad=": 81,
     ]
+
+    /// F1–F15: the only keys where shift alone is enough, since they type nothing.
+    static let functionKeyCodes = Set(namedKeys.filter { $0.key.hasPrefix("f") && $0.key.dropFirst().allSatisfy(\.isNumber) }.values)
 
     /// Key codes that `KeyLayout` must not claim: the keypad types digits too, but is named apart.
     public static var layoutIndependentKeyCodes: Set<UInt32> { Set(namedKeys.values).union([71]) }
@@ -129,6 +134,7 @@ extension KeyCombo {
         } else {
             throw .unknownKey(keyName)
         }
+        if modifiers == .shift, !Self.functionKeyCodes.contains(keyCode) { throw .shiftOnly(string) }
     }
 
     /// The config-file form, e.g. `ctrl+opt+cmd+w`. Round-trips through `init(parsing:layout:)`.
