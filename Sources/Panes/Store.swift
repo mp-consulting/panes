@@ -13,12 +13,15 @@ import PanesCore
     var config: Config {
         didSet {
             guard config != oldValue else { return }
+            updateIssues()
             scheduleSave()
             onChange?()
         }
     }
 
     private(set) var layout: KeyLayout
+    /// `Config.issues`, grouped by preset: the sidebar asks once per row, so it's computed per change.
+    private var issuesByPreset: [UUID?: [String]] = [:]
     /// Presets whose shortcut the system refused, by id; `nil` key for the grid hotkey.
     var refusedHotkeys: Set<UUID?> = []
     /// True while a shortcut recorder listens: hotkeys are suspended so the keys reach it.
@@ -50,6 +53,7 @@ import PanesCore
             isFirstRun = data == nil
             save()
         }
+        updateIssues()
     }
 
     /// Renames the unreadable `config.json` and returns the message the settings show.
@@ -78,7 +82,11 @@ import PanesCore
     }
 
     func issues(for preset: UUID?) -> [String] {
-        config.issues(layout: layout).filter { $0.preset == preset }.map(\.message)
+        issuesByPreset[preset] ?? []
+    }
+
+    private func updateIssues() {
+        issuesByPreset = Dictionary(grouping: config.issues(layout: layout), by: \.preset).mapValues { $0.map(\.message) }
     }
 
     func display(_ key: String) -> String? {
@@ -88,6 +96,7 @@ import PanesCore
 
     func refreshKeyboardLayout() {
         layout = KeyboardLayout.current()
+        updateIssues()
         onChange?()
     }
 
