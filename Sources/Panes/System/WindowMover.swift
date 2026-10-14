@@ -7,6 +7,8 @@ import PanesCore
     enum Failure: Error {
         case notTrusted
         case noWindow
+        /// No display at all, e.g. a closed laptop with nothing attached.
+        case noScreen
     }
 
     static var isTrusted: Bool { AXIsProcessTrusted() }
@@ -30,7 +32,8 @@ import PanesCore
               let current = frame(of: window)
         else { throw .noWindow }
 
-        let target = selection.frame(in: visibleArea(for: current))
+        guard let area = visibleArea(for: current) else { throw .noScreen }
+        let target = selection.frame(in: area)
 
         // With enhanced UI on (set by assistive apps, and by some apps on themselves), every setter
         // animates and the second one lands on a stale frame.
@@ -48,18 +51,17 @@ import PanesCore
 
     /// The visible frame (menu bar and Dock excluded), in Accessibility coordinates, of the screen
     /// holding most of `windowFrame`.
-    static func visibleArea(for windowFrame: CGRect) -> CGRect {
-        let screen = screen(for: windowFrame)
-        return flipped(screen.visibleFrame, primaryScreenHeight: primaryHeight)
+    static func visibleArea(for windowFrame: CGRect) -> CGRect? {
+        screen(for: windowFrame).map { flipped($0.visibleFrame, primaryScreenHeight: primaryHeight) }
     }
 
-    static func screen(for windowFrame: CGRect) -> NSScreen {
+    static func screen(for windowFrame: CGRect) -> NSScreen? {
         let screens = NSScreen.screens
         let best = screens.max { a, b in
             overlap(windowFrame, a) < overlap(windowFrame, b)
         }
         if let best, overlap(windowFrame, best) > 0 { return best }
-        return NSScreen.main ?? screens[0]
+        return NSScreen.main ?? screens.first
     }
 
     /// The frame, in Accessibility coordinates, of `app`'s focused window.

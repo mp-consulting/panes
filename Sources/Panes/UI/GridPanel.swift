@@ -40,7 +40,8 @@ final class FloatingPanel: NSPanel {
     func show(for target: NSRunningApplication?) {
         close()
         let windowFrame = WindowMover.focusedWindowFrame(of: target)
-        let screen = windowFrame.map(WindowMover.screen(for:)) ?? NSScreen.main ?? NSScreen.screens[0]
+        guard let screen = windowFrame.flatMap(WindowMover.screen(for:)) ?? NSScreen.main ?? NSScreen.screens.first
+        else { return NSSound.beep() }
         targetArea = flipped(screen.visibleFrame, primaryScreenHeight: WindowMover.primaryScreenHeight)
         let aspect = screen.visibleFrame.width / max(screen.visibleFrame.height, 1)
 
