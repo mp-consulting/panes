@@ -12,6 +12,8 @@ All notable changes to Panes are listed here. The format follows
   `config-unreadable-<date>.json` instead of being overwritten, and Settings opens to say so.
 - Out-of-range grid sizes in a hand-edited `config.json` are brought into range when it's read,
   instead of placing windows at invalid coordinates or crashing the preset editor.
+- The grid panel no longer shows a button for a preset whose area lies outside its grid; Settings
+  already flagged it and its shortcut was already off.
 
 ## [1.0.0] - 2026-10-14
 

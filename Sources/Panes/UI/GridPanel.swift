@@ -127,7 +127,8 @@ struct GridPanelView: View {
             GridSelector(columns: store.config.grid.columns, rows: store.config.grid.rows, onPreview: preview, onCancel: cancel, onCommit: apply)
                 .frame(height: (width - 32) / max(aspect, 0.5))
 
-            let presets = store.config.presets.filter(\.enabled)
+            // Same rule as the hotkeys: an area outside its grid would place the window off screen.
+            let presets = store.config.presets.filter { $0.enabled && $0.area.isValid }
             if !presets.isEmpty {
                 GlassEffectContainer(spacing: 8) {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
