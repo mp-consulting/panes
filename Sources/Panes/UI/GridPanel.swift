@@ -93,6 +93,10 @@ final class FloatingPanel: NSPanel {
         panel.onCancel = { [weak self] in self?.close() }
         panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2))
         panel.makeKeyAndOrderFront(nil)
+        // Nothing focused to start with: AppKit gives focus to the first control that takes it,
+        // and with the settings not yet built on the back, that is the gear, ringed from the start.
+        // Escape still reaches the panel through `cancelOperation`.
+        panel.makeFirstResponder(nil)
         self.panel = panel
         refreshShadow()
     }
