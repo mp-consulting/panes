@@ -6,6 +6,8 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-15
+
 ### Changed
 
 - Turning the grid panel over is one continuous half-turn: the card no longer vanishes for a moment
@@ -108,7 +110,8 @@ All notable changes to Panes are listed here. The format follows
 - Configuration saved as JSON in `~/Library/Application Support/Panes/config.json`.
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
 
-[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/mp-consulting/panes/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/mp-consulting/panes/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/mp-consulting/panes/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/mp-consulting/panes/compare/v1.3.0...v1.3.1
