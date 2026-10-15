@@ -30,7 +30,8 @@ import PanesCore
     @discardableResult
     static func move(windowOf app: NSRunningApplication, to selection: GridSelection, on screen: NSScreen? = nil) throws(Failure) -> CGRect {
         guard isTrusted else { throw .notTrusted }
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        guard let pid = processID(of: app) else { throw .noWindow }
+        let appElement = AXUIElementCreateApplication(pid)
         guard let window: AXUIElement = attribute(appElement, kAXFocusedWindowAttribute),
               let current = frame(of: window)
         else { throw .noWindow }
@@ -87,10 +88,31 @@ import PanesCore
 
     /// The frame, in Accessibility coordinates, of `app`'s focused window.
     static func focusedWindowFrame(of app: NSRunningApplication?) -> CGRect? {
-        guard isTrusted, let app else { return nil }
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        guard isTrusted, let app, let pid = processID(of: app) else { return nil }
+        let appElement = AXUIElementCreateApplication(pid)
         guard let window: AXUIElement = attribute(appElement, kAXFocusedWindowAttribute) else { return nil }
         return frame(of: window)
+    }
+
+    /// `app`'s process ID. Some apps (Preview on macOS 26) come back from NSWorkspace with a
+    /// `processIdentifier` of -1, even when looked up by their own pid, so this falls back to the
+    /// running process whose executable is the app's.
+    static func processID(of app: NSRunningApplication) -> pid_t? {
+        if app.processIdentifier > 0 { return app.processIdentifier }
+        guard let executable = app.executableURL?.resolvingSymlinksInPath().path else { return nil }
+        let count = proc_listallpids(nil, 0)
+        guard count > 0 else { return nil }
+        // Room for processes started between the two calls.
+        var pids = [pid_t](repeating: 0, count: Int(count) + 64)
+        let filled = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
+        var buffer = [UInt8](repeating: 0, count: Int(4 * MAXPATHLEN))
+        return pids.prefix(Int(max(filled, 0))).first { pid in
+            guard pid > 0 else { return false }
+            let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
+            guard length > 0 else { return false }
+            let path = String(decoding: buffer.prefix(Int(length)), as: UTF8.self)
+            return URL(fileURLWithPath: path).resolvingSymlinksInPath().path == executable
+        }
     }
 
     static var primaryScreenHeight: CGFloat { primaryHeight }

@@ -116,14 +116,15 @@ import SwiftUI
 
     private func moveFrontmost(to selection: GridSelection) {
         guard let app = NSWorkspace.shared.frontmostApplication else { return NSSound.beep() }
+        let processID = WindowMover.processID(of: app) ?? app.processIdentifier
         var screen: NSScreen?
         if store.config.cycleScreens, let lastPlacement,
            let frame = WindowMover.focusedWindowFrame(of: app),
-           lastPlacement.isRepeated(area: selection, processID: app.processIdentifier, frame: frame) {
+           lastPlacement.isRepeated(area: selection, processID: processID, frame: frame) {
             screen = WindowMover.screen(after: frame)
         }
         let frame = move(app, to: selection, on: screen)
-        lastPlacement = frame.map { Placement(processID: app.processIdentifier, area: selection, frame: $0) }
+        lastPlacement = frame.map { Placement(processID: processID, area: selection, frame: $0) }
     }
 
     /// Returns where the window ended up, or `nil` when it couldn't be moved.

@@ -6,6 +6,11 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows of Preview, and of other apps macOS reports without a process ID, move again instead of
+  beeping.
+
 ## [1.3.0] - 2026-10-14
 
 ### Added
