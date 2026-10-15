@@ -56,7 +56,7 @@ struct IssueLabel: View {
     }
 }
 
-/// A switch at the trailing edge, so switches line up with each other and with the steppers above
+/// A switch at the trailing edge, so switches line up with each other and with the sliders above
 /// them instead of following their labels.
 struct TrailingSwitchToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {

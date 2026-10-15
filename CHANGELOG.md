@@ -6,6 +6,11 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Columns and rows are set with sliders instead of up/down arrows, in Settings → General and in the
+  preset editor.
+
 ## [1.3.1] - 2026-10-15
 
 ### Fixed

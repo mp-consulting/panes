@@ -179,20 +179,14 @@ struct PresetEditor: View {
                     .frame(maxWidth: .infinity)
 
                     HStack(spacing: 24) {
-                        Stepper(value: gridBinding(\.columns), in: Config.gridSizeRange) {
-                            LabeledContent("Columns", value: "\(preset.area.columns)")
-                        }
-                        Stepper(value: gridBinding(\.rows), in: Config.gridSizeRange) {
-                            LabeledContent("Rows", value: "\(preset.area.rows)")
-                        }
-                        Spacer()
-                        Text(percentages.size)
-                            .font(.callout.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .help(percentages.position)
+                        GridSizeSlider(title: "Columns", value: gridBinding(\.columns))
+                        GridSizeSlider(title: "Rows", value: gridBinding(\.rows))
                     }
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text(percentages.size)
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help(percentages.position)
                 }
 
                 GlassCard(title: "Shortcut", systemImage: "keyboard") {
@@ -272,12 +266,8 @@ struct GeneralPane: View {
                 GlassCard(title: "Grid Panel", systemImage: "square.grid.3x3") {
                     HStack(alignment: .top, spacing: 24) {
                         VStack(alignment: .leading, spacing: 10) {
-                            Stepper(value: $store.config.grid.columns, in: Config.gridSizeRange) {
-                                LabeledContent("Columns", value: "\(store.config.grid.columns)")
-                            }
-                            Stepper(value: $store.config.grid.rows, in: Config.gridSizeRange) {
-                                LabeledContent("Rows", value: "\(store.config.grid.rows)")
-                            }
+                            GridSizeSlider(title: "Columns", value: $store.config.grid.columns)
+                            GridSizeSlider(title: "Rows", value: $store.config.grid.rows)
                             Toggle("Show resize preview", isOn: $store.config.showResizePreview)
                                 .toggleStyle(.trailingSwitch)
                                 .help("While you drag across the grid or hover a preset, outline where the window will land.")
@@ -453,6 +443,43 @@ struct UpdatesCard: View {
                 ProgressView().controlSize(.small)
                 Text("Downloading and checking Panes \(release.version.description)…").foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+// MARK: - Controls
+
+/// A grid's column or row count, as a slider over `Config.gridSizeRange` with the count at its end.
+struct GridSizeSlider: View {
+    let title: String
+    @Binding var value: Int
+
+    private static let range = Double(Config.gridSizeRange.lowerBound)...Double(Config.gridSizeRange.upperBound)
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title)
+                // The same width for both, so stacked sliders line up.
+                .frame(width: 60, alignment: .leading)
+                .accessibilityHidden(true)
+            Slider(value: steps, in: Self.range, step: 1) { Text(title) }
+                .labelsHidden()
+                .accessibilityValue("\(value)")
+            Text("\(value)")
+                .monospacedDigit()
+                .frame(width: 22, alignment: .trailing)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// Only whole steps reach `value`: a preset rescales its area on every change, so a drag
+    /// sends one change per count rather than one per pointer move.
+    private var steps: Binding<Double> {
+        Binding {
+            Double(value)
+        } set: { newValue in
+            let count = Int(newValue.rounded())
+            if count != value { value = count }
         }
     }
 }
