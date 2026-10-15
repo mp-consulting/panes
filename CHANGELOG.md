@@ -6,6 +6,11 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Turning the grid panel over is one continuous half-turn: the card no longer vanishes for a moment
+  as it passes edge-on.
+
 ## [1.4.1] - 2026-10-15
 
 ### Fixed

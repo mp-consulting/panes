@@ -35,8 +35,10 @@ final class FloatingPanel: NSPanel {
     /// Whether the back of the card, the settings, has been built. Not until the first turn: it
     /// cost as much as the grid several times over, on every open, for a face rarely shown.
     private var hasSettingsFace = false
-    /// The grid face's panel size, as last laid out: it only changes with the screen picked.
-    private var gridFaceSize: NSSize = .zero
+    /// The card's turn and its place in the panel, set together with the panel's frame.
+    private var card = CardState()
+    /// Where the panel goes once a turn ends: the new face's frame.
+    private var frameAfterTurn: NSRect?
 
     init(store: Store,
          updater: Updater,
@@ -69,9 +71,14 @@ final class FloatingPanel: NSPanel {
         self.screens = screens
         showsSettings = false
         hasSettingsFace = false
+        card = CardState()
+        frameAfterTurn = nil
         screenIndex = screens.firstIndex { $0.frame == screen.frame } ?? 0
 
         let controller = NSHostingController(rootView: makeView())
+        // The panel's size is set here alone: during a turn it holds both faces, and the controller
+        // would otherwise shrink it to the face showing.
+        controller.sizingOptions = []
         content = controller
         let size = layOut()
         let panel = FloatingPanel(
@@ -133,27 +140,35 @@ final class FloatingPanel: NSPanel {
         refreshShadow()
     }
 
-    /// Halfway through the flip, with the card edge-on: swaps the face and resizes the panel to it,
-    /// about the same centre and kept on screen.
-    private func turnOver() {
-        guard let panel else { return }
+    /// Before a turn: grows the panel to hold both the card where it is and the new face where it
+    /// will land (about the same centre, kept on screen), without moving the card, and returns the
+    /// card's offset at the end of the turn. Done while nothing moves, so the turn itself never
+    /// resizes or lays out the panel.
+    private func beginTurn() -> CGSize {
+        guard let panel else { return .zero }
         showsSettings.toggle()
-        // Both faces' sizes are known, so the card is not measured again while edge-on: that was
-        // a third of the pause there.
-        let known = showsSettings ? GridPanelView.settingsFaceSize : gridFaceSize
-        let size: NSSize
-        if known == .zero {
-            size = layOut()
-        } else {
-            content?.rootView = makeView()
-            size = known
-        }
+        // The grid is measured again on the way back: a preset added on the back adds a row of buttons.
+        let size = showsSettings ? GridPanelView.settingsFaceSize : layOut()
         let old = panel.frame
-        var frame = NSRect(x: old.midX - size.width / 2, y: old.midY - size.height / 2, width: size.width, height: size.height)
+        var new = NSRect(x: old.midX - size.width / 2, y: old.midY - size.height / 2, width: size.width, height: size.height)
         if let visible = (panel.screen ?? NSScreen.main)?.visibleFrame {
-            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
-            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+            new.origin.x = min(max(new.minX, visible.minX), visible.maxX - new.width)
+            new.origin.y = min(max(new.minY, visible.minY), visible.maxY - new.height)
         }
+        let union = old.union(new)
+        frameAfterTurn = new
+        // SwiftUI's y axis points down, AppKit's up.
+        card.offset = CGSize(width: old.midX - union.midX, height: union.midY - old.midY)
+        if showsSettings { content?.rootView = makeView() }
+        panel.setFrame(union, display: true)
+        return CGSize(width: new.midX - union.midX, height: union.midY - new.midY)
+    }
+
+    /// After a turn: shrinks the panel to the face now showing, which stays where it is.
+    private func endTurn() {
+        guard let panel, let frame = frameAfterTurn else { return }
+        frameAfterTurn = nil
+        card.offset = .zero
         panel.setFrame(frame, display: true)
     }
 
@@ -164,7 +179,7 @@ final class FloatingPanel: NSPanel {
         hasSettingsFace = true
         content?.rootView = makeView()
         // Laid out now, while hidden: left to the next pass, it landed in the turn's first frames
-        // and stalled the card short of edge-on.
+        // and stalled the card mid-turn.
         content?.view.layoutSubtreeIfNeeded()
     }
 
@@ -203,9 +218,7 @@ final class FloatingPanel: NSPanel {
         content.rootView = makeView()
         // Measure through the controller: an NSHostingView's fittingSize is zero until it has
         // been laid out in a window, which left the panel invisible at 0x0.
-        let size = content.sizeThatFits(in: NSSize(width: 2000, height: 2000))
-        if !showsSettings { gridFaceSize = size }
-        return size
+        return content.sizeThatFits(in: NSSize(width: 2000, height: 2000))
     }
 
     private func makeView() -> GridPanelView {
@@ -230,7 +243,9 @@ final class FloatingPanel: NSPanel {
             showsSettings: showsSettings,
             hasSettingsFace: hasSettingsFace,
             buildSettingsFace: { [weak self] in self?.buildSettingsFace() },
-            turnOver: { [weak self] in self?.turnOver() },
+            card: card,
+            beginTurn: { [weak self] in self?.beginTurn() ?? .zero },
+            endTurn: { [weak self] in self?.endTurn() },
             flipping: { [weak self] isFlipping in self?.setFlipping(isFlipping) },
             cancel: { [weak self] in self?.close() },
             openSettings: { [weak self] in
@@ -274,15 +289,17 @@ struct GridPanelView: View {
     /// Whether the back exists yet: built on hovering the gear, or on the first flip at the latest.
     let hasSettingsFace: Bool
     let buildSettingsFace: () -> Void
-    /// Swaps the face and resizes the panel; called halfway through a flip, with the card edge-on.
-    let turnOver: () -> Void
+    /// The card's angle and its offset in the panel, animated by the turn.
+    let card: CardState
+    /// Grows the panel for the turn and returns the card's offset at its end.
+    let beginTurn: () -> CGSize
+    /// Shrinks the panel to the face now showing.
+    let endTurn: () -> Void
     /// Called with `true` as the card starts turning and `false` once it has landed.
     let flipping: (Bool) -> Void
     let cancel: () -> Void
     let openSettings: () -> Void
 
-    /// The card's turn about its vertical axis: 0 lies flat, ±90 is edge-on.
-    @State private var angle: Double = 0
 
     /// How shallow the turn's perspective is. Deeper looks more 3D but enlarges the near edge more.
     private static let perspective = 0.25
@@ -303,16 +320,18 @@ struct GridPanelView: View {
                 .frame(width: width)
                 .glassEffect(.regular, in: .rect(cornerRadius: 28))
                 .faceShown(!showsSettings)
+                .modifier(CardFace(angle: card.angle, isBack: false, perspective: Self.perspective))
             if hasSettingsFace {
                 settings
                     .faceShown(showsSettings)
+                    .modifier(CardFace(angle: card.angle, isBack: true, perspective: Self.perspective))
             }
         }
-        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: Self.perspective)
+        .offset(card.offset)
         .padding(Self.turnMargin)
     }
 
-    /// Turns the card edge-on, lets the panel swap the face and size, then turns the new face in.
+    /// Turns the card over in one half-turn, the new face coming in as the old one goes edge-on.
     /// Going back turns the other way, so the grid comes back the way it left.
     private func flip() {
         guard hasSettingsFace else {
@@ -326,26 +345,19 @@ struct GridPanelView: View {
         turn()
     }
 
+    /// The panel is resized before and after the turn, never during it: swapping faces and resizing
+    /// with the card edge-on left it invisible for a tenth of a second or more.
     private func turn() {
-        let edgeOn: Double = showsSettings ? -90 : 90
         flipping(true)
-        withAnimation(.easeIn(duration: 0.18)) {
-            angle = edgeOn
-        } completion: {
-            // A pass for the card to be drawn exactly edge-on first. Swapping the face takes a
-            // tenth of a second, and done straight away, the screen held the turn's last frame
-            // meanwhile: a sliver of the old face, stuck short of edge-on.
-            DispatchQueue.main.async {
-                turnOver()
-                angle = -edgeOn
-                // A pass for the new face to lay out edge-on before it turns in.
-                DispatchQueue.main.async {
-                    withAnimation(.easeOut(duration: 0.24)) {
-                        angle = 0
-                    } completion: {
-                        flipping(false)
-                    }
-                }
+        let offset = beginTurn()
+        // A pass for the grown panel to draw before anything moves.
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.42)) {
+                card.angle = card.angle < 90 ? 180 : 0
+                card.offset = offset
+            } completion: {
+                endTurn()
+                flipping(false)
             }
         }
     }
@@ -438,8 +450,8 @@ struct GridPanelView: View {
 /// Both faces of the grid panel, each at its own size and centred, sized to the face showing. Once
 /// built, both stay in the view tree, so a flip never inserts views: Liquid Glass grows newly
 /// inserted views into place, and the settings would lay themselves out while turning in. The back
-/// is added hidden before the first flip starts; a flip only turns the card and swaps which face
-/// is visible.
+/// is added hidden before the first flip starts; a flip only turns the card, each face drawn while
+/// it faces the viewer.
 struct FaceStack: Layout {
     var showing: Int
 
@@ -458,8 +470,7 @@ struct FaceStack: Layout {
 private extension View {
     /// The face not showing stays laid out but can't be seen, clicked, focused or read out.
     func faceShown(_ shown: Bool) -> some View {
-        opacity(shown ? 1 : 0)
-            .allowsHitTesting(shown)
+        allowsHitTesting(shown)
             .disabled(!shown)
             .accessibilityHidden(!shown)
     }
@@ -537,5 +548,31 @@ struct PresetButton: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.glass)
+    }
+}
+
+/// The card's turn, 0 for the grid face up and 180 for the settings, and its offset in the panel.
+@MainActor @Observable final class CardState {
+    var angle: Double = 0
+    var offset: CGSize = .zero
+}
+
+/// One face of the card: turned with it (the back half a turn further), and drawn only while it
+/// faces the viewer. Animatable, so the face is hidden on the exact frame it passes edge-on.
+private struct CardFace: ViewModifier, Animatable {
+    var angle: Double
+    let isBack: Bool
+    let perspective: Double
+
+    nonisolated var animatableData: Double {
+        get { angle }
+        set { angle = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let facing = isBack ? angle > 90 : angle < 90
+        content
+            .rotation3DEffect(.degrees(isBack ? angle - 180 : angle), axis: (x: 0, y: 1, z: 0), perspective: perspective)
+            .opacity(facing ? 1 : 0)
     }
 }
