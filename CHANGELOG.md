@@ -10,6 +10,11 @@ All notable changes to Panes are listed here. The format follows
 
 - Columns and rows are set with sliders instead of up/down arrows, in Settings → General and in the
   preset editor.
+- The grid panel opens about four times faster: the settings on its back are only built once the
+  pointer reaches the gear.
+- Dragging across a large grid stays smooth: a 24×24 grid redraws in a quarter of the time.
+- Turning the grid panel over no longer freezes on a sliver of the old face halfway through.
+- Shortcuts for Preview's windows no longer search every running process on each press.
 
 ## [1.3.1] - 2026-10-15
 

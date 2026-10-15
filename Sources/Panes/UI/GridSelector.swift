@@ -35,19 +35,9 @@ struct GridSelector: View {
                     }
                     .padding(-gap)
 
-                ForEach(0..<(columns * rows), id: \.self) { index in
-                    let cell = Cell(column: index % columns, row: index / columns)
-                    let rect = cellRect(cell, in: size)
-                    let isHovered = cell == hovered && dragging == nil
-                    RoundedRectangle(cornerRadius: cornerRadius(for: rect), style: .continuous)
-                        .fill(isHovered ? AnyShapeStyle(tint.opacity(0.35)) : AnyShapeStyle(.primary.opacity(0.10)))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: cornerRadius(for: rect), style: .continuous)
-                                .strokeBorder(.primary.opacity(isHovered ? 0.0 : 0.16), lineWidth: 1)
-                        }
-                        .frame(width: rect.width, height: rect.height)
-                        .offset(x: rect.minX, y: rect.minY)
-                }
+                GridCells(columns: columns, rows: rows, size: size, gap: gap, tint: tint,
+                          hovered: dragging == nil ? hovered : nil)
+                    .equatable()
 
                 if let shown = dragging ?? committed, shown.columns == columns, shown.rows == rows {
                     let rect = shown.frame(in: CGRect(origin: .zero, size: size)).insetBy(dx: gap / 2, dy: gap / 2)
@@ -98,7 +88,10 @@ struct GridSelector: View {
             .onDisappear { escapeWatcher.stop() }
             .onContinuousHover { phase in
                 switch phase {
-                case let .active(location): hovered = cell(at: location, in: size)
+                // Only on entering another cell: every pointer move would otherwise update the view.
+                case let .active(location):
+                    let cell = cell(at: location, in: size)
+                    if cell != hovered { hovered = cell }
                 case .ended: hovered = nil
                 }
             }
@@ -114,20 +107,91 @@ struct GridSelector: View {
         onCancel?()
     }
 
-    private func cellRect(_ cell: Cell, in size: CGSize) -> CGRect {
-        GridSelection(columns: columns, rows: rows, start: cell, end: cell)
-            .frame(in: CGRect(origin: .zero, size: size))
-            .insetBy(dx: gap / 2, dy: gap / 2)
-    }
-
-    private func cornerRadius(for rect: CGRect) -> CGFloat {
-        min(6, min(rect.width, rect.height) / 3)
-    }
-
     private func cell(at point: CGPoint, in size: CGSize) -> Cell {
         let column = Int(point.x / size.width * CGFloat(columns))
         let row = Int(point.y / size.height * CGFloat(rows))
         return Cell(column: min(max(column, 0), columns - 1), row: min(max(row, 0), rows - 1))
+    }
+}
+
+/// The cells under the selection, in a view of their own, compared by value, so a drag only
+/// redraws the selection. All but the hovered cell are one shape, filled and stroked once: as a
+/// view each, a 24×24 grid was over a thousand layers to update on every change.
+private struct GridCells: View, Equatable {
+    let columns: Int
+    let rows: Int
+    let size: CGSize
+    let gap: CGFloat
+    let tint: Color
+    let hovered: Cell?
+
+    var body: some View {
+        let cells = CellShapes(columns: columns, rows: rows, size: size, gap: gap, excluding: hovered)
+        ZStack(alignment: .topLeading) {
+            cells.fill(.primary.opacity(0.10))
+            cells.strokeBorder(.primary.opacity(0.16), lineWidth: 1)
+            if let hovered {
+                let rect = CellShapes.rect(of: hovered, columns: columns, rows: rows, gap: gap, in: CGRect(origin: .zero, size: size))
+                RoundedRectangle(cornerRadius: CellShapes.cornerRadius(for: rect), style: .continuous)
+                    .fill(tint.opacity(0.35))
+                    .frame(width: rect.width, height: rect.height)
+                    .offset(x: rect.minX, y: rect.minY)
+            }
+        }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+    }
+}
+
+/// Every cell of a grid as a rounded rectangle, one path for them all, leaving out `excluded`.
+private struct CellShapes: InsettableShape {
+    let columns: Int
+    let rows: Int
+    /// The grid's size as laid out. The shape's own bounds come rounded to whole pixels, and cells
+    /// placed in those would drift a pixel from the selection, which is placed in this size.
+    let size: CGSize
+    let gap: CGFloat
+    let excluded: Cell?
+    /// Set by `strokeBorder`, which draws inside each cell's edge as it would for a `RoundedRectangle`.
+    var inset: CGFloat = 0
+
+    init(columns: Int, rows: Int, size: CGSize, gap: CGFloat, excluding excluded: Cell?) {
+        self.columns = columns
+        self.rows = rows
+        self.size = size
+        self.gap = gap
+        self.excluded = excluded
+    }
+
+    func path(in bounds: CGRect) -> Path {
+        let bounds = CGRect(origin: bounds.origin, size: size)
+        var path = Path()
+        for row in 0..<rows {
+            for column in 0..<columns {
+                let cell = Cell(column: column, row: row)
+                guard cell != excluded else { continue }
+                let rect = Self.rect(of: cell, columns: columns, rows: rows, gap: gap, in: bounds)
+                let radius = max(Self.cornerRadius(for: rect) - inset, 0)
+                path.addRoundedRect(in: rect.insetBy(dx: inset, dy: inset),
+                                    cornerSize: CGSize(width: radius, height: radius), style: .continuous)
+            }
+        }
+        return path
+    }
+
+    func inset(by amount: CGFloat) -> CellShapes {
+        var shape = self
+        shape.inset += amount
+        return shape
+    }
+
+    static func rect(of cell: Cell, columns: Int, rows: Int, gap: CGFloat, in bounds: CGRect) -> CGRect {
+        GridSelection(columns: columns, rows: rows, start: cell, end: cell)
+            .frame(in: bounds)
+            .insetBy(dx: gap / 2, dy: gap / 2)
+    }
+
+    static func cornerRadius(for rect: CGRect) -> CGFloat {
+        min(6, min(rect.width, rect.height) / 3)
     }
 }
 

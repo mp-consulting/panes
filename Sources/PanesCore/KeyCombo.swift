@@ -161,13 +161,15 @@ extension KeyCombo {
         if modifiers.contains(.option) { s += "⌥" }
         if modifiers.contains(.shift) { s += "⇧" }
         if modifiers.contains(.command) { s += "⌘" }
-        let symbols: [String: String] = [
-            "left": "←", "right": "→", "up": "↑", "down": "↓", "return": "↩", "enter": "⌤",
-            "tab": "⇥", "space": "Space", "delete": "⌫", "escape": "⎋", "forwarddelete": "⌦",
-        ]
         let name = keyName(layout: layout)
-        return s + (symbols[name] ?? name.uppercased())
+        return s + (Self.keySymbols[name] ?? name.uppercased())
     }
+
+    /// How menus show the named keys that have a symbol.
+    private static let keySymbols: [String: String] = [
+        "left": "←", "right": "→", "up": "↑", "down": "↓", "return": "↩", "enter": "⌤",
+        "tab": "⇥", "space": "Space", "delete": "⌫", "escape": "⎋", "forwarddelete": "⌦",
+    ]
 
     private func keyName(layout: KeyLayout) -> String {
         if let character = layout.characterForKeyCode[keyCode] { return character }

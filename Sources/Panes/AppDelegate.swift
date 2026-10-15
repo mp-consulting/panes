@@ -116,22 +116,28 @@ import SwiftUI
 
     private func moveFrontmost(to selection: GridSelection) {
         guard let app = NSWorkspace.shared.frontmostApplication else { return NSSound.beep() }
-        let processID = WindowMover.processID(of: app) ?? app.processIdentifier
-        var screen: NSScreen?
-        if store.config.cycleScreens, let lastPlacement,
-           let frame = WindowMover.focusedWindowFrame(of: app),
-           lastPlacement.isRepeated(area: selection, processID: processID, frame: frame) {
-            screen = WindowMover.screen(after: frame)
+        lastPlacement = moving { () throws(WindowMover.Failure) in
+            let window = try WindowMover.focusedWindow(of: app)
+            var screen: NSScreen?
+            if store.config.cycleScreens, let lastPlacement,
+               lastPlacement.isRepeated(area: selection, processID: window.processID, frame: window.frame) {
+                screen = WindowMover.screen(after: window.frame)
+            }
+            let frame = try WindowMover.move(window, to: selection, on: screen)
+            return Placement(processID: window.processID, area: selection, frame: frame)
         }
-        let frame = move(app, to: selection, on: screen)
-        lastPlacement = frame.map { Placement(processID: processID, area: selection, frame: $0) }
     }
 
-    /// Returns where the window ended up, or `nil` when it couldn't be moved.
+    private func move(_ app: NSRunningApplication, to selection: GridSelection, on screen: NSScreen) {
+        moving { () throws(WindowMover.Failure) in try WindowMover.move(WindowMover.focusedWindow(of: app), to: selection, on: screen) }
+    }
+
+    /// Runs a window move and returns its result, or `nil` after asking for Accessibility access
+    /// or beeping when the window couldn't be moved.
     @discardableResult
-    private func move(_ app: NSRunningApplication, to selection: GridSelection, on screen: NSScreen? = nil) -> CGRect? {
+    private func moving<T>(_ body: () throws(WindowMover.Failure) -> T) -> T? {
         do {
-            return try WindowMover.move(windowOf: app, to: selection, on: screen)
+            return try body()
         } catch .notTrusted {
             WindowMover.requestTrust()
             showSettings()

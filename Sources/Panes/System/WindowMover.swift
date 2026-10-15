@@ -25,33 +25,46 @@ import PanesCore
         }
     }
 
-    /// Fills `selection` of `screen`, or of the screen the window is mostly on when `nil`, with the
-    /// focused window of `app`, and returns the frame the window ended up with.
-    @discardableResult
-    static func move(windowOf app: NSRunningApplication, to selection: GridSelection, on screen: NSScreen? = nil) throws(Failure) -> CGRect {
+    /// An app's focused window, looked up once: finding the app's process can mean scanning every
+    /// running one (see `processID(of:)`), and a shortcut needs the window's frame before moving it.
+    struct FocusedWindow {
+        let processID: pid_t
+        /// In Accessibility coordinates, as it was when looked up.
+        let frame: CGRect
+        fileprivate let app: AXUIElement
+        fileprivate let element: AXUIElement
+    }
+
+    static func focusedWindow(of app: NSRunningApplication) throws(Failure) -> FocusedWindow {
         guard isTrusted else { throw .notTrusted }
         guard let pid = processID(of: app) else { throw .noWindow }
         let appElement = AXUIElementCreateApplication(pid)
         guard let window: AXUIElement = attribute(appElement, kAXFocusedWindowAttribute),
-              let current = frame(of: window)
+              let frame = frame(of: window)
         else { throw .noWindow }
+        return FocusedWindow(processID: pid, frame: frame, app: appElement, element: window)
+    }
 
-        guard let area = screen.map(visibleArea(of:)) ?? visibleArea(for: current) else { throw .noScreen }
+    /// Fills `selection` of `screen`, or of the screen the window is mostly on when `nil`, with
+    /// `window`, and returns the frame the window ended up with.
+    @discardableResult
+    static func move(_ window: FocusedWindow, to selection: GridSelection, on screen: NSScreen? = nil) throws(Failure) -> CGRect {
+        guard let area = screen.map(visibleArea(of:)) ?? visibleArea(for: window.frame) else { throw .noScreen }
         let target = selection.frame(in: area)
 
         // With enhanced UI on (set by assistive apps, and by some apps on themselves), every setter
         // animates and the second one lands on a stale frame.
         let enhancedKey = "AXEnhancedUserInterface" as CFString
-        let enhanced: Bool = attribute(appElement, enhancedKey) ?? false
-        if enhanced { AXUIElementSetAttributeValue(appElement, enhancedKey, kCFBooleanFalse) }
-        defer { if enhanced { AXUIElementSetAttributeValue(appElement, enhancedKey, kCFBooleanTrue) } }
+        let enhanced: Bool = attribute(window.app, enhancedKey) ?? false
+        if enhanced { AXUIElementSetAttributeValue(window.app, enhancedKey, kCFBooleanFalse) }
+        defer { if enhanced { AXUIElementSetAttributeValue(window.app, enhancedKey, kCFBooleanTrue) } }
 
         // Size, then position, then size again: shrinking first lets the move onto a smaller
         // screen succeed, and the second resize wins over apps that clamp to the old screen.
-        set(window, kAXSizeAttribute, size: target.size)
-        set(window, kAXPositionAttribute, point: target.origin)
-        set(window, kAXSizeAttribute, size: target.size)
-        return frame(of: window) ?? target
+        set(window.element, kAXSizeAttribute, size: target.size)
+        set(window.element, kAXPositionAttribute, point: target.origin)
+        set(window.element, kAXSizeAttribute, size: target.size)
+        return frame(of: window.element) ?? target
     }
 
     /// The visible frame (menu bar and Dock excluded), in Accessibility coordinates, of the screen
@@ -86,33 +99,42 @@ import PanesCore
         return screens[ScreenLayout.index(after: current, in: frames)]
     }
 
-    /// The frame, in Accessibility coordinates, of `app`'s focused window.
-    static func focusedWindowFrame(of app: NSRunningApplication?) -> CGRect? {
-        guard isTrusted, let app, let pid = processID(of: app) else { return nil }
-        let appElement = AXUIElementCreateApplication(pid)
-        guard let window: AXUIElement = attribute(appElement, kAXFocusedWindowAttribute) else { return nil }
-        return frame(of: window)
-    }
-
     /// `app`'s process ID. Some apps (Preview on macOS 26) come back from NSWorkspace with a
     /// `processIdentifier` of -1, even when looked up by their own pid, so this falls back to the
     /// running process whose executable is the app's.
     static func processID(of app: NSRunningApplication) -> pid_t? {
         if app.processIdentifier > 0 { return app.processIdentifier }
         guard let executable = app.executableURL?.resolvingSymlinksInPath().path else { return nil }
+        // Checked again before use: the app may have quit and come back under another pid.
+        if let pid = foundProcessIDs[executable], executablePath(of: pid) == executable { return pid }
+
         let count = proc_listallpids(nil, 0)
         guard count > 0 else { return nil }
         // Room for processes started between the two calls.
         var pids = [pid_t](repeating: 0, count: Int(count) + 64)
         let filled = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
-        var buffer = [UInt8](repeating: 0, count: Int(4 * MAXPATHLEN))
-        return pids.prefix(Int(max(filled, 0))).first { pid in
+        // Matching names first: the kernel keeps them at hand, while a path is resolved on disk.
+        let name = Array((executable as NSString).lastPathComponent.utf8)
+        var nameBuffer = [UInt8](repeating: 0, count: 2 * Int(MAXCOMLEN) + 1)
+        let pid = pids.prefix(Int(max(filled, 0))).first { pid in
             guard pid > 0 else { return false }
-            let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
-            guard length > 0 else { return false }
-            let path = String(decoding: buffer.prefix(Int(length)), as: UTF8.self)
-            return URL(fileURLWithPath: path).resolvingSymlinksInPath().path == executable
+            let length = Int(proc_name(pid, &nameBuffer, UInt32(nameBuffer.count)))
+            // The kernel cuts long names short, so a prefix is a match too.
+            guard length > 0, name.starts(with: nameBuffer.prefix(length)) else { return false }
+            return executablePath(of: pid) == executable
         }
+        if let pid { foundProcessIDs[executable] = pid }
+        return pid
+    }
+
+    /// Processes found by `processID(of:)`, by executable path.
+    private static var foundProcessIDs: [String: pid_t] = [:]
+
+    private static func executablePath(of pid: pid_t) -> String? {
+        var buffer = [UInt8](repeating: 0, count: Int(4 * MAXPATHLEN))
+        let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
+        guard length > 0 else { return nil }
+        return URL(fileURLWithPath: String(decoding: buffer.prefix(Int(length)), as: UTF8.self)).resolvingSymlinksInPath().path
     }
 
     static var primaryScreenHeight: CGFloat { primaryHeight }

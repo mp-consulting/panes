@@ -251,6 +251,9 @@ struct GeneralPane: View {
     @State private var launchError: String?
     @State private var confirmImport = false
     @State private var importError: String?
+    /// Read once per visit: the body is re-evaluated on every config edit, and each read asks
+    /// cfprefsd for both of Divvy's preference domains.
+    @State private var canImportFromDivvy = Store.hasDivvyPreferences
 
     var body: some View {
         ScrollView {
@@ -311,7 +314,7 @@ struct GeneralPane: View {
                         Button("Show in Finder", systemImage: "folder") {
                             NSWorkspace.shared.activateFileViewerSelecting([Store.fileURL])
                         }
-                        if Store.hasDivvyPreferences {
+                        if canImportFromDivvy {
                             Button("Import from Divvy…", systemImage: "square.and.arrow.down") { confirmImport = true }
                         }
                     }
