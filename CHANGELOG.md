@@ -34,8 +34,8 @@ All notable changes to Panes are listed here. The format follows
 - The grid panel stays on screen: with many presets they scroll, a portrait screen's grid narrows
   to fit, and the panel no longer opens or grows past the screen's edges.
 - Settings fit screens shorter than 620pt.
-- Clicking the back or gear button while the card is still turning turns it again once it lands,
-  instead of sizing the panel from the middle of the turn.
+- Clicking the back or gear button while the card is still turning sends it back from where it
+  is, instead of sizing the panel from the middle of the turn.
 - A preset imported with a grid finer than 24 (a subdivided Divvy grid) keeps it: its sliders go
   up to its size instead of shrinking it when touched.
 - With more than three screens, the screen icons narrow so the header fits; screens with the same

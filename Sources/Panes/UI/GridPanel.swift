@@ -44,11 +44,8 @@ final class FloatingPanel: NSPanel {
     private var card = CardState()
     /// Where the panel goes once a turn ends: the new face's frame.
     private var frameAfterTurn: NSRect?
-    /// Whether the card is turning. The panel is sized for this turn alone, so another can't start
-    /// until it lands.
-    private var isTurning = false
-    /// A turn asked for while one was under way, started when that one lands.
-    private var queuedTurn: (() -> Void)?
+    /// Where the card was when the turn under way began, for turning it back mid-turn.
+    private var frameBeforeTurn: NSRect?
 
     init(store: Store,
          updater: Updater,
@@ -91,8 +88,7 @@ final class FloatingPanel: NSPanel {
         hasSettingsFace = false
         card = CardState()
         frameAfterTurn = nil
-        isTurning = false
-        queuedTurn = nil
+        frameBeforeTurn = nil
         screenIndex = screens.firstIndex { $0.frame == screen.frame } ?? 0
         hostScreen = screen
 
@@ -171,7 +167,6 @@ final class FloatingPanel: NSPanel {
     /// resizes or lays out the panel.
     private func beginTurn() -> CGSize {
         guard let panel else { return .zero }
-        isTurning = true
         showsSettings.toggle()
         // The grid is measured again on the way back: a preset added on the back adds a row of buttons.
         let size = showsSettings ? settingsFaceSize : layOut()
@@ -180,6 +175,7 @@ final class FloatingPanel: NSPanel {
                           on: panel.screen ?? hostScreen)
         let union = old.union(new)
         frameAfterTurn = new
+        frameBeforeTurn = old
         // SwiftUI's y axis points down, AppKit's up.
         card.offset = CGSize(width: old.midX - union.midX, height: union.midY - old.midY)
         if showsSettings { content?.rootView = makeView() }
@@ -189,24 +185,24 @@ final class FloatingPanel: NSPanel {
 
     /// After a turn: shrinks the panel to the face now showing, which stays where it is.
     private func endTurn() {
-        isTurning = false
         guard let panel, let frame = frameAfterTurn else { return }
         frameAfterTurn = nil
+        frameBeforeTurn = nil
         card.offset = .zero
         panel.setFrame(frame, display: true)
-        if let next = queuedTurn {
-            queuedTurn = nil
-            next()
-        }
     }
 
-    /// Keeps `turn` for when the turn under way lands, and returns true; false when no turn is
-    /// under way. A second click during the same turn takes the first back, so clicking back and
-    /// forth leaves the card where it was heading.
-    private func deferTurn(_ turn: @escaping () -> Void) -> Bool {
-        guard isTurning else { return false }
-        queuedTurn = queuedTurn == nil ? turn : nil
-        return true
+    /// Mid-turn: sends the card back where it came from and returns its offset there, or `nil`
+    /// when no turn is under way. The panel already holds both the frame the card left and the one
+    /// it was heading for, so nothing is resized: only the faces' roles swap.
+    private func reverseTurn() -> CGSize? {
+        guard let panel, let back = frameBeforeTurn, let ahead = frameAfterTurn else { return nil }
+        showsSettings.toggle()
+        (frameBeforeTurn, frameAfterTurn) = (ahead, back)
+        // Which face takes clicks; both are built and laid out, so this moves nothing.
+        content?.rootView = makeView()
+        let union = panel.frame
+        return CGSize(width: back.midX - union.midX, height: union.midY - back.midY)
     }
 
     /// Adds the settings to the back of the card, still hidden: when the pointer reaches the gear,
@@ -300,7 +296,7 @@ final class FloatingPanel: NSPanel {
             buildSettingsFace: { [weak self] in self?.buildSettingsFace() },
             card: card,
             beginTurn: { [weak self] in self?.beginTurn() ?? .zero },
-            deferTurn: { [weak self] turn in self?.deferTurn(turn) ?? false },
+            reverseTurn: { [weak self] in self?.reverseTurn() },
             endTurn: { [weak self] in self?.endTurn() },
             flipping: { [weak self] _ in self?.resizePreview.hide() },
             cancel: { [weak self] in self?.close() }
@@ -350,8 +346,8 @@ struct GridPanelView: View {
     let card: CardState
     /// Grows the panel for the turn and returns the card's offset at its end.
     let beginTurn: () -> CGSize
-    /// Holds a turn asked for mid-turn until the card lands; returns false when none is under way.
-    let deferTurn: (@escaping () -> Void) -> Bool
+    /// Mid-turn, sends the card back and returns its offset there; `nil` when no turn is under way.
+    let reverseTurn: () -> CGSize?
     /// Shrinks the panel to the face now showing.
     let endTurn: () -> Void
     /// Called with `true` as the card starts turning and `false` once it has landed.
@@ -404,20 +400,27 @@ struct GridPanelView: View {
     /// The panel is resized before and after the turn, never during it: swapping faces and resizing
     /// with the card edge-on left it invisible for a tenth of a second or more.
     private func turn() {
-        // The incoming face takes clicks as soon as the turn starts; starting a second turn then
-        // would size the panel from the first one's mid-turn frame.
-        if deferTurn({ turn() }) { return }
         flipping(true)
+        // The incoming face takes clicks as soon as the turn starts. A click then turns the card
+        // back from wherever it has got to, with no resize: SwiftUI's animations add up, so the
+        // reversal starts from the angle and speed on screen.
+        if let offset = reverseTurn() { return animateTurn(to: offset) }
         let offset = beginTurn()
         // A pass for the grown panel to draw before anything moves.
-        DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: reduceMotion ? 0.3 : 0.42)) {
-                card.angle = card.angle < 90 ? 180 : 0
-                card.offset = offset
-            } completion: {
-                endTurn()
-                flipping(false)
-            }
+        DispatchQueue.main.async { animateTurn(to: offset) }
+    }
+
+    private func animateTurn(to offset: CGSize) {
+        card.turns += 1
+        let turn = card.turns
+        withAnimation(.easeInOut(duration: reduceMotion ? 0.3 : 0.42)) {
+            card.angle = card.angle < 90 ? 180 : 0
+            card.offset = offset
+        } completion: {
+            // A turn reversed midway finishes after its reversal began: only the last one lands.
+            guard card.turns == turn else { return }
+            endTurn()
+            flipping(false)
         }
     }
 
@@ -666,6 +669,8 @@ struct PresetButton: View {
 @MainActor @Observable final class CardState {
     var angle: Double = 0
     var offset: CGSize = .zero
+    /// Counts turns, reversals included, so only the latest one's completion ends the turn.
+    @ObservationIgnored var turns = 0
 }
 
 /// The card's shadow, drawn under each face so it turns with it. Only outside the card: the glass
