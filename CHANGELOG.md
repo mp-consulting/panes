@@ -6,6 +6,8 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-20
+
 ### Added
 
 - Installing an update shows a progress bar with how much of the download has arrived, then a
@@ -116,6 +118,7 @@ All notable changes to Panes are listed here. The format follows
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
 
 [Unreleased]: https://github.com/mp-consulting/panes/compare/v1.4.2...HEAD
+[1.5.0]: https://github.com/mp-consulting/panes/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/mp-consulting/panes/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/mp-consulting/panes/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/mp-consulting/panes/compare/v1.3.1...v1.4.0
