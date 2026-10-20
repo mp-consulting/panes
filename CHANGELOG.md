@@ -6,6 +6,11 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- On a very wide or tall main screen, the grids in Settings keep a usable size instead of
+  shrinking to a thin strip.
+
 ## [1.6.0] - 2026-10-20
 
 ### Added

@@ -11,6 +11,13 @@ struct SettingsView: View {
     /// The settings window's fixed content size.
     static let size = CGSize(width: 900, height: 620)
 
+    /// The shape of the grids drawn in the settings: the main screen's, kept between square and
+    /// 16:10. A 32:9 screen's true shape left them a strip too short to drag across.
+    static var gridAspect: CGFloat {
+        let frame = NSScreen.main?.visibleFrame ?? .init(x: 0, y: 0, width: 16, height: 10)
+        return min(max(frame.width / max(frame.height, 1), 1), 1.6)
+    }
+
     /// `size`, made shorter on a screen too short for it (a small Mac at a larger text size).
     /// Every pane scrolls, so only the height gives.
     static func size(on screen: NSScreen?) -> CGSize {
@@ -181,10 +188,7 @@ struct PresetEditor: View {
     let onDuplicate: () -> Void
     let onDelete: () -> Void
 
-    @State private var screenAspect: CGFloat = {
-        let frame = NSScreen.main?.visibleFrame ?? .init(x: 0, y: 0, width: 16, height: 10)
-        return frame.width / max(frame.height, 1)
-    }()
+    @State private var screenAspect = SettingsView.gridAspect
     /// The sliders' end: 24, or a finer grid the preset came with (a subdivided Divvy grid is up to
     /// 48), so touching a slider doesn't coarsen it. Fixed while the preset is open, so a slider
     /// doesn't rescale under the pointer.
@@ -453,11 +457,7 @@ struct GeneralPane: View {
         }
     }
 
-    /// The main screen's shape, as the grid panel shows it.
-    private var screenAspect: CGFloat {
-        let frame = NSScreen.main?.visibleFrame ?? .init(x: 0, y: 0, width: 16, height: 10)
-        return frame.width / max(frame.height, 1)
-    }
+    private var screenAspect: CGFloat { SettingsView.gridAspect }
 
     private var gridHotkey: Binding<String> {
         Binding { store.config.gridHotkey ?? "" } set: { store.config.gridHotkey = $0.isEmpty ? nil : $0 }
