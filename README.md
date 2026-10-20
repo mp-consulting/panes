@@ -22,6 +22,8 @@ presets.
   screen of the front window. Drag across the cells you want; on release the window fills that zone.
 - **Resize preview.** While you drag, or hover a preset button, a glass outline on the real screen
   shows where the window will land.
+- **Follows your display settings.** Reduce Motion swaps the panel's turn for a cross-fade; Reduce
+  Transparency and Increase Contrast make the grid solid and its cells easier to count.
 - **Presets with global shortcuts.** Each preset is a grid area. Give it a shortcut (⌃⌥⌘← and so on)
   or leave it as a button in the grid panel.
 - **Settings window** to create, duplicate, reorder and delete presets, record shortcuts, and set the

@@ -5,21 +5,30 @@ import SwiftUI
 /// Divvy's resize preview. It sits just under the grid panel and glides between selections.
 @MainActor final class ResizePreview {
     private var window: NSPanel?
+    /// Counts fade-outs, so one that a `show` interrupted doesn't order the outline out when it ends.
+    private var hides = 0
+    private var isHiding = false
 
     /// - Parameter frame: in AppKit screen coordinates.
     func show(_ frame: NSRect) {
         let window = self.window ?? makeWindow()
         self.window = window
-        if window.isVisible {
+        isHiding = false
+        // Still on screen, even fading out, it glides to the new frame from where it is. With Reduce
+        // Motion it moves at once instead, and only its opacity animates.
+        if window.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.12
                 context.allowsImplicitAnimation = true
                 window.animator().setFrame(frame, display: true)
+                window.animator().alphaValue = 1
             }
         } else {
             window.setFrame(frame, display: true)
-            window.alphaValue = 0
-            window.orderFront(nil)
+            if !window.isVisible {
+                window.alphaValue = 0
+                window.orderFront(nil)
+            }
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.15
                 window.animator().alphaValue = 1
@@ -27,8 +36,23 @@ import SwiftUI
         }
     }
 
+    /// Fades out the way it faded in, rather than vanishing: as the grid closes, the outline gives
+    /// way to the window landing in it.
     func hide() {
-        window?.orderOut(nil)
+        guard let window, window.isVisible, !isHiding else { return }
+        isHiding = true
+        hides += 1
+        let hide = hides
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            window.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.isHiding, self.hides == hide else { return }
+                self.isHiding = false
+                self.window?.orderOut(nil)
+            }
+        }
     }
 
     private func makeWindow() -> NSPanel {

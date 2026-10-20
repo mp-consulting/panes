@@ -6,6 +6,14 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The resize preview fades out when it goes away, as it fades in, instead of vanishing.
+- With Reduce Motion on, the grid panel cross-fades to the settings instead of turning over, and
+  the resize preview moves without gliding.
+- With Reduce Transparency or Increase Contrast on, the grid is drawn on a solid bed with stronger
+  cell edges.
+
 ## [1.5.1] - 2026-10-20
 
 ### Fixed

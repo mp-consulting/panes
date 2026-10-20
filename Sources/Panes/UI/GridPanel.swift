@@ -271,6 +271,7 @@ struct GridPanelView: View {
     let cancel: () -> Void
     let openSettings: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// How shallow the turn's perspective is. Deeper looks more 3D but enlarges the near edge more.
     private static let perspective = 0.25
@@ -292,12 +293,12 @@ struct GridPanelView: View {
                 .glassEffect(.regular, in: .rect(cornerRadius: 28))
                 .modifier(CardShadow())
                 .faceShown(!showsSettings)
-                .modifier(CardFace(angle: card.angle, isBack: false, perspective: Self.perspective))
+                .modifier(CardFace(angle: card.angle, isBack: false, perspective: Self.perspective, crossFades: reduceMotion))
             if hasSettingsFace {
                 settings
                     .modifier(CardShadow())
                     .faceShown(showsSettings)
-                    .modifier(CardFace(angle: card.angle, isBack: true, perspective: Self.perspective))
+                    .modifier(CardFace(angle: card.angle, isBack: true, perspective: Self.perspective, crossFades: reduceMotion))
             }
         }
         .offset(card.offset)
@@ -325,7 +326,7 @@ struct GridPanelView: View {
         let offset = beginTurn()
         // A pass for the grown panel to draw before anything moves.
         DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 0.42)) {
+            withAnimation(.easeInOut(duration: reduceMotion ? 0.3 : 0.42)) {
                 card.angle = card.angle < 90 ? 180 : 0
                 card.offset = offset
             } completion: {
@@ -530,8 +531,6 @@ struct PresetButton: View {
     var offset: CGSize = .zero
 }
 
-/// One face of the card: turned with it (the back half a turn further), and drawn only while it
-/// faces the viewer. Animatable, so the face is hidden on the exact frame it passes edge-on.
 /// The card's shadow, drawn under each face so it turns with it. Only outside the card: the glass
 /// is translucent and would show the shape casting it. Kept within `GridPanelView.turnMargin`.
 private struct CardShadow: ViewModifier {
@@ -552,10 +551,15 @@ private struct CardShadow: ViewModifier {
     }
 }
 
+/// One face of the card: turned with it (the back half a turn further), and drawn only while it
+/// faces the viewer. Animatable, so the face is hidden on the exact frame it passes edge-on.
+/// With Reduce Motion the faces cross-fade in place instead: a turn through depth is the kind of
+/// motion that setting is for.
 private struct CardFace: ViewModifier, Animatable {
     var angle: Double
     let isBack: Bool
     let perspective: Double
+    let crossFades: Bool
 
     nonisolated var animatableData: Double {
         get { angle }
@@ -563,8 +567,17 @@ private struct CardFace: ViewModifier, Animatable {
     }
 
     func body(content: Content) -> some View {
+        if crossFades {
+            let progress = angle / 180
+            content.opacity(isBack ? progress : 1 - progress)
+        } else {
+            turned(content)
+        }
+    }
+
+    private func turned(_ content: Content) -> some View {
         let facing = isBack ? angle > 90 : angle < 90
-        content
+        return content
             .rotation3DEffect(.degrees(isBack ? angle - 180 : angle), axis: (x: 0, y: 1, z: 0), perspective: perspective)
             .opacity(facing ? 1 : 0)
     }

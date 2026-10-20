@@ -19,6 +19,9 @@ struct GridSelector: View {
     /// Set by Escape mid-drag, so the rest of that drag is ignored.
     @State private var cancelled = false
     @State private var escapeWatcher = EscapeWatcher()
+    // Liquid Glass follows these settings by itself; the grid's own translucent fills don't.
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     private let gap: CGFloat = 4
 
@@ -28,15 +31,15 @@ struct GridSelector: View {
             ZStack(alignment: .topLeading) {
                 // A solid-ish bed under the cells: on glass, faint cells vanish into busy wallpapers.
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.background.opacity(0.72))
+                    .fill(.background.opacity(reduceTransparency ? 1 : 0.72))
                     .overlay {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(.primary.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(.primary.opacity(contrast == .increased ? 0.45 : 0.12), lineWidth: 1)
                     }
                     .padding(-gap)
 
                 GridCells(columns: columns, rows: rows, size: size, gap: gap, tint: tint,
-                          hovered: dragging == nil ? hovered : nil)
+                          hovered: dragging == nil ? hovered : nil, highContrast: contrast == .increased)
                     .equatable()
 
                 if let shown = dragging ?? committed, shown.columns == columns, shown.rows == rows {
@@ -46,7 +49,7 @@ struct GridSelector: View {
                         .glassEffect(.regular.tint(tint.opacity(0.6)), in: .rect(cornerRadius: 10))
                         .overlay {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(.white.opacity(0.55), lineWidth: 1.5)
+                                .strokeBorder(.white.opacity(contrast == .increased ? 0.95 : 0.55), lineWidth: 1.5)
                         }
                         .overlay {
                             Text("\(shown.maxColumn - shown.minColumn + 1)×\(shown.maxRow - shown.minRow + 1)")
@@ -124,12 +127,14 @@ private struct GridCells: View, Equatable {
     let gap: CGFloat
     let tint: Color
     let hovered: Cell?
+    /// Increase Contrast: cell edges strong enough to count the cells by.
+    let highContrast: Bool
 
     var body: some View {
         let cells = CellShapes(columns: columns, rows: rows, size: size, gap: gap, excluding: hovered)
         ZStack(alignment: .topLeading) {
             cells.fill(.primary.opacity(0.10))
-            cells.strokeBorder(.primary.opacity(0.16), lineWidth: 1)
+            cells.strokeBorder(.primary.opacity(highContrast ? 0.5 : 0.16), lineWidth: 1)
             if let hovered {
                 let rect = CellShapes.rect(of: hovered, columns: columns, rows: rows, gap: gap, in: CGRect(origin: .zero, size: size))
                 RoundedRectangle(cornerRadius: CellShapes.cornerRadius(for: rect), style: .continuous)
