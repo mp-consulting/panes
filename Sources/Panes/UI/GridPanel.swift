@@ -90,7 +90,9 @@ final class FloatingPanel: NSPanel {
         panel.setContentSize(size)
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        // The card draws its own shadow (`CardShadow`): the window's, traced from translucent glass,
+        // came out as a hard grey ring offset under the card.
+        panel.hasShadow = false
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isReleasedWhenClosed = false
@@ -105,12 +107,9 @@ final class FloatingPanel: NSPanel {
         // Escape still reaches the panel through `cancelOperation`.
         panel.makeFirstResponder(nil)
         self.panel = panel
-        refreshShadow()
     }
 
     func close() {
-        shadowTimer?.invalidate()
-        shadowTimer = nil
         resizePreview.hide()
         panel?.delegate = nil
         panel?.orderOut(nil)
@@ -137,7 +136,6 @@ final class FloatingPanel: NSPanel {
         let old = panel.frame
         panel.setFrame(NSRect(x: old.maxX - size.width, y: old.maxY - size.height, width: size.width, height: size.height),
                        display: true)
-        refreshShadow()
     }
 
     /// Before a turn: grows the panel to hold both the card where it is and the new face where it
@@ -183,33 +181,6 @@ final class FloatingPanel: NSPanel {
         content?.view.layoutSubtreeIfNeeded()
     }
 
-    /// Redraws the shadow on every frame of a flip.
-    private var shadowTimer: Timer?
-
-    /// A clear window's shadow is a snapshot of its content: left alone, it would keep outlining the
-    /// flat card while the card turns. Turning it off for the flip made it pop out and back in, so it
-    /// is redrawn every frame instead.
-    private func setFlipping(_ isFlipping: Bool) {
-        resizePreview.hide()
-        shadowTimer?.invalidate()
-        shadowTimer = nil
-        if isFlipping {
-            let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.panel?.invalidateShadow() }
-            }
-            RunLoop.main.add(timer, forMode: .common)
-            shadowTimer = timer
-        } else {
-            refreshShadow()
-        }
-    }
-
-    /// A clear window's shadow follows the shape of its content when first drawn and never again, so
-    /// a resize, or glass that settles after the first pass, leaves a ghost of the old outline.
-    private func refreshShadow() {
-        DispatchQueue.main.async { [weak self] in self?.panel?.invalidateShadow() }
-    }
-
     /// Rebuilds the content for the selected screen and returns the panel size it needs.
     private func layOut() -> NSSize {
         let screen = screens[screenIndex]
@@ -246,7 +217,7 @@ final class FloatingPanel: NSPanel {
             card: card,
             beginTurn: { [weak self] in self?.beginTurn() ?? .zero },
             endTurn: { [weak self] in self?.endTurn() },
-            flipping: { [weak self] isFlipping in self?.setFlipping(isFlipping) },
+            flipping: { [weak self] _ in self?.resizePreview.hide() },
             cancel: { [weak self] in self?.close() },
             openSettings: { [weak self] in
                 self?.close()
@@ -319,10 +290,12 @@ struct GridPanelView: View {
                 .padding(16)
                 .frame(width: width)
                 .glassEffect(.regular, in: .rect(cornerRadius: 28))
+                .modifier(CardShadow())
                 .faceShown(!showsSettings)
                 .modifier(CardFace(angle: card.angle, isBack: false, perspective: Self.perspective))
             if hasSettingsFace {
                 settings
+                    .modifier(CardShadow())
                     .faceShown(showsSettings)
                     .modifier(CardFace(angle: card.angle, isBack: true, perspective: Self.perspective))
             }
@@ -559,6 +532,26 @@ struct PresetButton: View {
 
 /// One face of the card: turned with it (the back half a turn further), and drawn only while it
 /// faces the viewer. Animatable, so the face is hidden on the exact frame it passes edge-on.
+/// The card's shadow, drawn under each face so it turns with it. Only outside the card: the glass
+/// is translucent and would show the shape casting it. Kept within `GridPanelView.turnMargin`.
+private struct CardShadow: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background {
+            let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+            shape.fill(.black)
+                .shadow(color: .black.opacity(0.2), radius: 16, y: 8)
+                .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
+                .mask {
+                    Rectangle()
+                        .padding(-GridPanelView.turnMargin)
+                        .overlay { shape.blendMode(.destinationOut) }
+                        .compositingGroup()
+                }
+                .allowsHitTesting(false)
+        }
+    }
+}
+
 private struct CardFace: ViewModifier, Animatable {
     var angle: Double
     let isBack: Bool

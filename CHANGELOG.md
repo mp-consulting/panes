@@ -6,6 +6,11 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The grid panel's shadow is soft and follows the card, instead of a hard grey outline offset
+  under it.
+
 ## [1.5.0] - 2026-10-20
 
 ### Added
