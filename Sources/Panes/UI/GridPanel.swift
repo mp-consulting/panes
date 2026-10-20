@@ -19,15 +19,20 @@ final class FloatingPanel: NSPanel {
     private let store: Store
     private let updater: Updater
     private let apply: (NSRunningApplication, GridSelection, NSScreen) -> Void
-    private let openSettings: () -> Void
     private var panel: FloatingPanel?
     private var content: NSHostingController<GridPanelView>?
     private let resizePreview = ResizePreview()
     private var target: NSRunningApplication?
+    /// Whether the target has a window to place: not the Finder with only the desktop, say.
+    private var hasWindow = true
+    /// Told when the panel opens and closes, for the menu-bar icon to show it.
+    var visibilityChanged: ((Bool) -> Void)?
     /// The screens when the panel opened. It closes when they change, so these stay current.
     private var screens: [NSScreen] = []
     /// The screen the grid places the window on: the window's own at first, then the one picked.
     private var screenIndex = 0
+    /// The screen the panel itself is on, which picking another screen doesn't change.
+    private var hostScreen: NSScreen?
     /// That screen, menu bar and Dock excluded, in Accessibility coordinates.
     private var targetArea: CGRect = .zero
     /// Whether the panel has turned over to the settings.
@@ -39,15 +44,18 @@ final class FloatingPanel: NSPanel {
     private var card = CardState()
     /// Where the panel goes once a turn ends: the new face's frame.
     private var frameAfterTurn: NSRect?
+    /// Whether the card is turning. The panel is sized for this turn alone, so another can't start
+    /// until it lands.
+    private var isTurning = false
+    /// A turn asked for while one was under way, started when that one lands.
+    private var queuedTurn: (() -> Void)?
 
     init(store: Store,
          updater: Updater,
-         apply: @escaping (NSRunningApplication, GridSelection, NSScreen) -> Void,
-         openSettings: @escaping () -> Void) {
+         apply: @escaping (NSRunningApplication, GridSelection, NSScreen) -> Void) {
         self.store = store
         self.updater = updater
         self.apply = apply
-        self.openSettings = openSettings
         super.init()
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
@@ -64,16 +72,29 @@ final class FloatingPanel: NSPanel {
     func show(for target: NSRunningApplication?) {
         close()
         let screens = NSScreen.screens
-        let windowFrame = target.flatMap { try? WindowMover.focusedWindow(of: $0).frame }
+        var windowFrame: CGRect?
+        var hasWindow = target != nil
+        if let target {
+            do throws(WindowMover.Failure) {
+                windowFrame = try WindowMover.focusedWindow(of: target).frame
+            } catch {
+                // Without Accessibility there's no telling; the panel says so separately.
+                if case .noWindow = error { hasWindow = false }
+            }
+        }
         guard let screen = windowFrame.flatMap(WindowMover.screen(for:)) ?? NSScreen.main ?? screens.first
         else { return NSSound.beep() }
         self.target = target
+        self.hasWindow = hasWindow
         self.screens = screens
         showsSettings = false
         hasSettingsFace = false
         card = CardState()
         frameAfterTurn = nil
+        isTurning = false
+        queuedTurn = nil
         screenIndex = screens.firstIndex { $0.frame == screen.frame } ?? 0
+        hostScreen = screen
 
         let controller = NSHostingController(rootView: makeView())
         // The panel's size is set here alone: during a turn it holds both faces, and the controller
@@ -97,20 +118,25 @@ final class FloatingPanel: NSPanel {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        panel.animationBehavior = .utilityWindow
+        // Opened by a hotkey many times a day: it's there at once, like a menu.
+        panel.animationBehavior = .none
         panel.delegate = self
         panel.onCancel = { [weak self] in self?.close() }
-        panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2))
+        panel.setFrame(clamped(NSRect(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2,
+                                      width: size.width, height: size.height), on: screen),
+                       display: false)
         panel.makeKeyAndOrderFront(nil)
         // Nothing focused to start with: AppKit gives focus to the first control that takes it,
         // and with the settings not yet built on the back, that is the gear, ringed from the start.
         // Escape still reaches the panel through `cancelOperation`.
         panel.makeFirstResponder(nil)
         self.panel = panel
+        visibilityChanged?(true)
     }
 
     func close() {
         resizePreview.hide()
+        if panel != nil { visibilityChanged?(false) }
         panel?.delegate = nil
         panel?.orderOut(nil)
         panel = nil
@@ -134,7 +160,8 @@ final class FloatingPanel: NSPanel {
         let size = layOut()
         // Grown or shrunk from the top-right corner, so the screen picker stays under the pointer.
         let old = panel.frame
-        panel.setFrame(NSRect(x: old.maxX - size.width, y: old.maxY - size.height, width: size.width, height: size.height),
+        panel.setFrame(clamped(NSRect(x: old.maxX - size.width, y: old.maxY - size.height, width: size.width, height: size.height),
+                               on: panel.screen ?? hostScreen),
                        display: true)
     }
 
@@ -144,15 +171,13 @@ final class FloatingPanel: NSPanel {
     /// resizes or lays out the panel.
     private func beginTurn() -> CGSize {
         guard let panel else { return .zero }
+        isTurning = true
         showsSettings.toggle()
         // The grid is measured again on the way back: a preset added on the back adds a row of buttons.
-        let size = showsSettings ? GridPanelView.settingsFaceSize : layOut()
+        let size = showsSettings ? settingsFaceSize : layOut()
         let old = panel.frame
-        var new = NSRect(x: old.midX - size.width / 2, y: old.midY - size.height / 2, width: size.width, height: size.height)
-        if let visible = (panel.screen ?? NSScreen.main)?.visibleFrame {
-            new.origin.x = min(max(new.minX, visible.minX), visible.maxX - new.width)
-            new.origin.y = min(max(new.minY, visible.minY), visible.maxY - new.height)
-        }
+        let new = clamped(NSRect(x: old.midX - size.width / 2, y: old.midY - size.height / 2, width: size.width, height: size.height),
+                          on: panel.screen ?? hostScreen)
         let union = old.union(new)
         frameAfterTurn = new
         // SwiftUI's y axis points down, AppKit's up.
@@ -164,10 +189,24 @@ final class FloatingPanel: NSPanel {
 
     /// After a turn: shrinks the panel to the face now showing, which stays where it is.
     private func endTurn() {
+        isTurning = false
         guard let panel, let frame = frameAfterTurn else { return }
         frameAfterTurn = nil
         card.offset = .zero
         panel.setFrame(frame, display: true)
+        if let next = queuedTurn {
+            queuedTurn = nil
+            next()
+        }
+    }
+
+    /// Keeps `turn` for when the turn under way lands, and returns true; false when no turn is
+    /// under way. A second click during the same turn takes the first back, so clicking back and
+    /// forth leaves the card where it was heading.
+    private func deferTurn(_ turn: @escaping () -> Void) -> Bool {
+        guard isTurning else { return false }
+        queuedTurn = queuedTurn == nil ? turn : nil
+        return true
     }
 
     /// Adds the settings to the back of the card, still hidden: when the pointer reaches the gear,
@@ -181,25 +220,70 @@ final class FloatingPanel: NSPanel {
         content?.view.layoutSubtreeIfNeeded()
     }
 
-    /// Rebuilds the content for the selected screen and returns the panel size it needs.
+    /// The tallest the card may be: its screen's height, menu bar and Dock excluded, less a little air.
+    private var maxCardHeight: CGFloat {
+        (hostScreen ?? NSScreen.main).map { $0.visibleFrame.height - 16 } ?? 2000
+    }
+
+    /// The panel size for the settings face: the settings at the height its screen allows, plus the
+    /// margin for the turn.
+    private var settingsFaceSize: NSSize {
+        let size = SettingsView.size(on: hostScreen)
+        return NSSize(width: size.width + 2 * GridPanelView.turnMargin, height: size.height + 2 * GridPanelView.turnMargin)
+    }
+
+    /// Where a panel frame goes on `screen`: all of it on screen when it fits, otherwise the card,
+    /// the clear margin for the turn running off the edge, and failing that the card's top and left.
+    private func clamped(_ frame: NSRect, on screen: NSScreen?) -> NSRect {
+        guard let visible = (screen ?? NSScreen.main)?.visibleFrame else { return frame }
+        let margin = GridPanelView.turnMargin
+        func place(_ origin: CGFloat, _ length: CGFloat, _ lower: CGFloat, _ upper: CGFloat, keepUpper: Bool) -> CGFloat {
+            var (lower, upper) = (lower, upper)
+            if length > upper - lower { (lower, upper) = (lower - margin, upper + margin) }
+            if length > upper - lower { return keepUpper ? upper - length : lower }
+            return min(max(origin, lower), upper - length)
+        }
+        var frame = frame
+        frame.origin.x = place(frame.minX, frame.width, visible.minX, visible.maxX, keepUpper: false)
+        // AppKit's y axis points up: the upper end is the top.
+        frame.origin.y = place(frame.minY, frame.height, visible.minY, visible.maxY, keepUpper: true)
+        return frame
+    }
+
+    /// Rebuilds the content for the selected screen and returns the panel size it needs. A card
+    /// taller than its screen (dozens of presets) is measured again with the presets scrolling in
+    /// what room is left.
     private func layOut() -> NSSize {
         let screen = screens[screenIndex]
         targetArea = WindowMover.visibleArea(of: screen)
         guard let content else { return .zero }
-        content.rootView = makeView()
         // Measure through the controller: an NSHostingView's fittingSize is zero until it has
         // been laid out in a window, which left the panel invisible at 0x0.
-        return content.sizeThatFits(in: NSSize(width: 2000, height: 2000))
+        func measure(presetsHeight: CGFloat?) -> NSSize {
+            content.rootView = makeView(presetsHeight: presetsHeight)
+            return content.sizeThatFits(in: NSSize(width: 2000, height: 4000))
+        }
+        let size = measure(presetsHeight: nil)
+        let maxHeight = maxCardHeight + 2 * GridPanelView.turnMargin
+        guard size.height > maxHeight else { return size }
+        let withoutPresets = measure(presetsHeight: 0).height
+        return measure(presetsHeight: max(maxHeight - withoutPresets, 60))
     }
 
-    private func makeView() -> GridPanelView {
+    private func makeView(presetsHeight: CGFloat? = nil) -> GridPanelView {
         let target = target
         let screen = screens[screenIndex].visibleFrame
         let aspect = screen.width / max(screen.height, 1)
+        // Wide screens get a wider panel, so the grid keeps a usable height (~230pt).
+        let width = min(max(230 * aspect + 32, 380), 760)
         return GridPanelView(
-            store: store, updater: updater, target: target, aspect: aspect,
-            // Wide screens get a wider panel, so the grid keeps a usable height (~230pt).
-            width: min(max(230 * aspect + 32, 380), 760),
+            store: store, updater: updater, target: target, hasWindow: hasWindow, aspect: aspect,
+            width: width,
+            // A portrait screen's grid would be taller than a short screen: it narrows instead,
+            // keeping room for the header and a row of presets.
+            gridHeight: min((width - 32) / max(aspect, 0.5), max(maxCardHeight - 200, 160)),
+            presetsHeight: presetsHeight,
+            settingsHeight: SettingsView.size(on: hostScreen).height,
             screens: screens.map { ScreenPicker.Screen(frame: WindowMover.frame(of: $0), name: $0.localizedName) },
             selectedScreen: screenIndex,
             selectScreen: { [weak self] index in self?.selectScreen(index) },
@@ -216,13 +300,10 @@ final class FloatingPanel: NSPanel {
             buildSettingsFace: { [weak self] in self?.buildSettingsFace() },
             card: card,
             beginTurn: { [weak self] in self?.beginTurn() ?? .zero },
+            deferTurn: { [weak self] turn in self?.deferTurn(turn) ?? false },
             endTurn: { [weak self] in self?.endTurn() },
             flipping: { [weak self] _ in self?.resizePreview.hide() },
-            cancel: { [weak self] in self?.close() },
-            openSettings: { [weak self] in
-                self?.close()
-                self?.openSettings()
-            }
+            cancel: { [weak self] in self?.close() }
         )
     }
 
@@ -247,8 +328,13 @@ struct GridPanelView: View {
     let store: Store
     let updater: Updater
     let target: NSRunningApplication?
+    let hasWindow: Bool
     let aspect: CGFloat
     let width: CGFloat
+    let gridHeight: CGFloat
+    /// When set, the preset buttons scroll in this height: there are too many for the screen.
+    let presetsHeight: CGFloat?
+    let settingsHeight: CGFloat
     let screens: [ScreenPicker.Screen]
     let selectedScreen: Int
     let selectScreen: (Int) -> Void
@@ -264,12 +350,13 @@ struct GridPanelView: View {
     let card: CardState
     /// Grows the panel for the turn and returns the card's offset at its end.
     let beginTurn: () -> CGSize
+    /// Holds a turn asked for mid-turn until the card lands; returns false when none is under way.
+    let deferTurn: (@escaping () -> Void) -> Bool
     /// Shrinks the panel to the face now showing.
     let endTurn: () -> Void
     /// Called with `true` as the card starts turning and `false` once it has landed.
     let flipping: (Bool) -> Void
     let cancel: () -> Void
-    let openSettings: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -279,11 +366,6 @@ struct GridPanelView: View {
     /// clipped by the panel. At most (1 / (1 - perspective / 2) - 1) / 2 of the card's height: 48pt
     /// covers the 620pt settings. Clear pixels let clicks through to whatever is below.
     static let turnMargin: CGFloat = 48
-
-    /// The panel size for the settings face: the settings window's, plus the margin for the turn.
-    static var settingsFaceSize: NSSize {
-        NSSize(width: SettingsView.size.width + 2 * turnMargin, height: SettingsView.size.height + 2 * turnMargin)
-    }
 
     var body: some View {
         FaceStack(showing: showsSettings ? 1 : 0) {
@@ -322,6 +404,9 @@ struct GridPanelView: View {
     /// The panel is resized before and after the turn, never during it: swapping faces and resizing
     /// with the card edge-on left it invisible for a tenth of a second or more.
     private func turn() {
+        // The incoming face takes clicks as soon as the turn starts; starting a second turn then
+        // would size the panel from the first one's mid-turn frame.
+        if deferTurn({ turn() }) { return }
         flipping(true)
         let offset = beginTurn()
         // A pass for the grown panel to draw before anything moves.
@@ -338,14 +423,14 @@ struct GridPanelView: View {
 
     /// The settings window's content, on the back of the card.
     private var settings: some View {
-        SettingsView(store: store, updater: updater)
+        SettingsView(store: store, updater: updater, height: settingsHeight)
             .overlay(alignment: .topLeading) {
                 // Where the settings window has its traffic lights.
                 Button("Back to the Grid", systemImage: "chevron.backward", action: flip)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.glass)
                     .buttonBorderShape(.circle)
-                    .help("Back to the grid")
+                    .help("Back to the Grid")
                     .padding(.top, 16)
                     .padding(.leading, 22)
             }
@@ -361,12 +446,16 @@ struct GridPanelView: View {
             }
 
             GridSelector(columns: store.config.grid.columns, rows: store.config.grid.rows, onPreview: preview, onCancel: cancel, onCommit: apply)
-                .frame(height: (width - 32) / max(aspect, 0.5))
+                .frame(width: min(width - 32, gridHeight * max(aspect, 0.5)), height: gridHeight)
+                .frame(maxWidth: .infinity)
+                // Nothing to place: a drag would only close the panel and beep.
+                .allowsHitTesting(hasWindow)
+                .opacity(hasWindow ? 1 : 0.45)
 
             // Same rule as the hotkeys: an area outside its grid would place the window off screen.
             let presets = store.config.presets.filter { $0.enabled && $0.area.isValid }
             if !presets.isEmpty {
-                GlassEffectContainer(spacing: 8) {
+                let buttons = GlassEffectContainer(spacing: 8) {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
                         ForEach(presets) { preset in
                             PresetButton(preset: preset, shortcut: store.display(preset.key)) { apply(preset.area) }
@@ -374,6 +463,15 @@ struct GridPanelView: View {
                         }
                     }
                 }
+                Group {
+                    if let presetsHeight {
+                        ScrollView { buttons }
+                            .frame(height: presetsHeight)
+                    } else {
+                        buttons
+                    }
+                }
+                .disabled(!hasWindow)
             }
         }
     }
@@ -386,12 +484,25 @@ struct GridPanelView: View {
             Text(target?.localizedName ?? "No window")
                 .font(.headline)
                 .lineLimit(1)
-            Spacer()
+                .help(target?.localizedName ?? "")
+            if target != nil, !hasWindow {
+                Text("No window to place")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .layoutPriority(-1)
+            }
+            Spacer(minLength: 0)
             if screens.count > 1 {
                 ScreenPicker(screens: screens, selected: selectedScreen, onSelect: selectScreen, onHover: previewScreen)
             }
             if let release = updater.availableRelease {
-                Button("Update", systemImage: "arrow.down.circle.fill", action: openSettings)
+                // Turns to the settings like the gear beside it, opened at the Updates card.
+                Button("Update", systemImage: "arrow.down.circle.fill") {
+                    store.revealUpdates = true
+                    flip()
+                }
+                .onHover { if $0 { buildSettingsFace() } }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.glassProminent)
                     .buttonBorderShape(.circle)
@@ -469,10 +580,15 @@ struct ScreenPicker: View {
     private let height: CGFloat = 18
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(ScreenLayout.pickerOrder(of: screens.map(\.frame)), id: \.self) { index in
+        let order = ScreenLayout.pickerOrder(of: screens.map(\.frame))
+        // Past three screens the icons narrow, so the header keeps room for the app's name.
+        let widest = screens.count > 3 ? max(160 / CGFloat(screens.count), 24) : 64
+        // No gaps between the icons: hovering across a gap faded the screen outline out and back in.
+        HStack(spacing: 0) {
+            ForEach(order, id: \.self) { index in
                 let screen = screens[index]
                 let isSelected = index == selected
+                let name = Self.name(of: index, in: screens, order: order)
                 Button { onSelect(index) } label: {
                     RoundedRectangle(cornerRadius: 2.5, style: .continuous)
                         .fill(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary.opacity(0.22)))
@@ -483,21 +599,40 @@ struct ScreenPicker: View {
                             }
                         }
                         .clipShape(.rect(cornerRadius: 2.5, style: .continuous))
+                        // Each icon keeps its screen's shape, within limits so a portrait or ultrawide one stays usable.
+                        .frame(width: min(max(height * screen.frame.width / max(screen.frame.height, 1), 12), widest), height: height)
+                        .padding(.horizontal, 2)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ScreenIconStyle())
                 // The panel is key while open: a focusable icon would wear the focus ring from the start.
                 .focusable(false)
-                // Each icon keeps its screen's shape, within limits so a portrait or ultrawide one stays usable.
-                .frame(width: min(max(height * screen.frame.width / max(screen.frame.height, 1), 12), 64), height: height)
                 .onHover { onHover($0 ? index : nil) }
-                .help(index == 0 ? "\(screen.name) (main screen)" : screen.name)
-                .accessibilityLabel("Place on \(screen.name)")
+                .help(index == 0 ? "\(name) (main screen)" : name)
+                .accessibilityLabel(name)
+                .accessibilityHint("Points the grid at this screen")
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .padding(5)
-        .glassEffect(.regular, in: .rect(cornerRadius: 9))
+        .padding(.vertical, 5)
+        .padding(.horizontal, 6)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    /// The screen's name, numbered in picker order when another screen has the same one (two of the
+    /// same monitor).
+    private static func name(of index: Int, in screens: [Screen], order: [Int]) -> String {
+        let name = screens[index].name
+        let twins = order.filter { screens[$0].name == name }
+        guard twins.count > 1, let position = twins.firstIndex(of: index) else { return name }
+        return "\(name) (\(position + 1))"
+    }
+}
+
+/// A screen icon dims while pressed, like any button.
+private struct ScreenIconStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
 
@@ -512,9 +647,9 @@ struct PresetButton: View {
                 GridThumbnail(area: preset.area)
                     .frame(width: 26)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(preset.name).font(.callout.weight(.medium)).lineLimit(1)
+                    Text(preset.displayName).font(.callout.weight(.medium)).lineLimit(1)
                     if let shortcut {
-                        Text(shortcut).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                        Text(shortcut).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
                 Spacer(minLength: 0)
@@ -522,6 +657,8 @@ struct PresetButton: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.glass)
+        // The name is cut short in a narrow button.
+        .help(preset.displayName)
     }
 }
 

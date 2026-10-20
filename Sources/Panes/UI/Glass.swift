@@ -56,6 +56,35 @@ struct IssueLabel: View {
     }
 }
 
+/// A warning arriving under its field: it fades in, settling from just above unless Reduce Motion is on.
+struct IssueTransition: Transition {
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        content.modifier(IssueTransitionEffect(isIdentity: phase.isIdentity))
+    }
+}
+
+private struct IssueTransitionEffect: ViewModifier {
+    let isIdentity: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isIdentity ? 1 : 0)
+            .offset(y: isIdentity || reduceMotion ? 0 : -4)
+    }
+}
+
+extension Transition where Self == IssueTransition {
+    static var issue: IssueTransition { .init() }
+}
+
+extension Animation {
+    /// For a card making room for a warning, or giving it back.
+    static func issue(_ reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.2)
+    }
+}
+
 /// A switch at the trailing edge, so switches line up with each other and with the sliders above
 /// them instead of following their labels.
 struct TrailingSwitchToggleStyle: ToggleStyle {

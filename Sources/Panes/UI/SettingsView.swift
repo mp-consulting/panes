@@ -10,14 +10,23 @@ enum SettingsPage: Hashable {
 struct SettingsView: View {
     /// The settings window's fixed content size.
     static let size = CGSize(width: 900, height: 620)
+
+    /// `size`, made shorter on a screen too short for it (a small Mac at a larger text size).
+    /// Every pane scrolls, so only the height gives.
+    static func size(on screen: NSScreen?) -> CGSize {
+        let available = (screen ?? NSScreen.main)?.visibleFrame.height ?? size.height
+        return CGSize(width: size.width, height: min(size.height, max(available - 16, 360)))
+    }
     /// Wide enough for a name like "Bottom" plus its shortcut; longer names end in "…".
     static let sidebarWidth: CGFloat = 240
 
     @Bindable var store: Store
     let updater: Updater
+    var height = SettingsView.size.height
     @State private var page: SettingsPage?
     /// The last page shown, so the window reopens where it was left: "general" or a preset id.
     @AppStorage("settingsPage") private var savedPage = "general"
+    @Environment(\.undoManager) private var undoManager
 
     var body: some View {
         // A fixed layout rather than NavigationSplitView: in a non-resizable window the split view
@@ -25,7 +34,8 @@ struct SettingsView: View {
         HStack(spacing: 0) {
             sidebar
                 .frame(width: Self.sidebarWidth)
-                .glassEffect(.regular, in: .rect(cornerRadius: 22))
+                // Nested in the card's 28pt corners at 10pt in.
+                .glassEffect(.regular, in: .rect(cornerRadius: 18))
                 .padding(10)
 
             Group {
@@ -46,11 +56,15 @@ struct SettingsView: View {
         }
         .background(GlassBackdrop())
         .ignoresSafeArea()
-        .frame(width: Self.size.width, height: Self.size.height)
+        .frame(width: Self.size.width, height: height)
         .onAppear {
             if page == nil {
                 page = UUID(uuidString: savedPage).map(SettingsPage.preset) ?? .general
             }
+            if store.revealUpdates { page = .general }
+        }
+        .onChange(of: store.revealUpdates) { _, reveal in
+            if reveal { page = .general }
         }
         .onChange(of: page) { _, page in
             if case let .preset(id) = page { savedPage = id.uuidString } else { savedPage = "general" }
@@ -84,10 +98,13 @@ struct SettingsView: View {
 
             // In the sidebar so it shows whichever page is open.
             if let release = updater.availableRelease {
-                Button("Panes \(release.version.description) is available", systemImage: "arrow.down.circle.fill") { page = .general }
-                    .buttonStyle(.glassProminent)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
+                Button("Panes \(release.version.description) is available", systemImage: "arrow.down.circle.fill") {
+                    store.revealUpdates = true
+                }
+                .buttonStyle(.glassProminent)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
             Button("New Preset", systemImage: "plus") {
@@ -98,6 +115,7 @@ struct SettingsView: View {
             .keyboardShortcut("n")
             .padding(12)
         }
+        .animation(.snappy(duration: 0.3), value: updater.availableRelease?.version.description)
         // Room for the window's traffic lights, which float over the sidebar.
         .padding(.top, 40)
     }
@@ -106,12 +124,27 @@ struct SettingsView: View {
         if let copy = store.duplicatePreset(id) { page = .preset(copy) }
     }
 
+    /// No confirmation, but undoable: ⌘Z puts the preset back where it was, shortcut and all.
     private func delete(_ id: UUID) {
-        let presets = store.config.presets
-        let index = presets.firstIndex { $0.id == id } ?? 0
+        guard let index = store.config.presets.firstIndex(where: { $0.id == id }) else { return }
+        let preset = store.config.presets[index]
         withAnimation { store.deletePreset(id) }
         let remaining = store.config.presets
         page = remaining.isEmpty ? .general : .preset(remaining[min(index, remaining.count - 1)].id)
+        undoManager?.registerUndo(withTarget: store) { _ in
+            MainActor.assumeIsolated { restore(preset, at: index) }
+        }
+        undoManager?.setActionName("Delete Preset")
+    }
+
+    private func restore(_ preset: Config.Preset, at index: Int) {
+        withAnimation { store.insertPreset(preset, at: index) }
+        page = .preset(preset.id)
+        // Registered while undoing, so it becomes the redo.
+        undoManager?.registerUndo(withTarget: store) { _ in
+            MainActor.assumeIsolated { delete(preset.id) }
+        }
+        undoManager?.setActionName("Delete Preset")
     }
 }
 
@@ -124,7 +157,7 @@ struct PresetRow: View {
         HStack(spacing: 10) {
             GridThumbnail(area: preset.area, tint: preset.enabled ? .accentColor : .secondary)
                 .frame(width: 30)
-            Text(preset.name)
+            Text(preset.displayName)
                 .lineLimit(1)
                 .foregroundStyle(preset.enabled ? .primary : .secondary)
             Spacer(minLength: 4)
@@ -132,7 +165,7 @@ struct PresetRow: View {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
             } else if let shortcut {
                 Text(shortcut)
-                    .font(.caption.monospaced())
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -152,6 +185,21 @@ struct PresetEditor: View {
         let frame = NSScreen.main?.visibleFrame ?? .init(x: 0, y: 0, width: 16, height: 10)
         return frame.width / max(frame.height, 1)
     }()
+    /// The sliders' end: 24, or a finer grid the preset came with (a subdivided Divvy grid is up to
+    /// 48), so touching a slider doesn't coarsen it. Fixed while the preset is open, so a slider
+    /// doesn't rescale under the pointer.
+    @State private var sliderEnd: Config.GridSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(store: Store, preset: Binding<Config.Preset>, onDuplicate: @escaping () -> Void, onDelete: @escaping () -> Void) {
+        self.store = store
+        _preset = preset
+        self.onDuplicate = onDuplicate
+        self.onDelete = onDelete
+        let area = preset.wrappedValue.area
+        let end = Config.gridSizeRange.upperBound
+        _sliderEnd = State(initialValue: Config.GridSize(columns: max(area.columns, end), rows: max(area.rows, end)))
+    }
 
     var body: some View {
         ScrollView {
@@ -174,13 +222,14 @@ struct PresetEditor: View {
                     GridSelector(columns: preset.area.columns, rows: preset.area.rows, committed: preset.area) {
                         preset.area = $0
                     }
+                    .accessibilityValue(percentages.size)
                     .aspectRatio(screenAspect, contentMode: .fit)
                     .frame(maxWidth: 560)
                     .frame(maxWidth: .infinity)
 
                     HStack(spacing: 24) {
-                        GridSizeSlider(title: "Columns", value: gridBinding(\.columns))
-                        GridSizeSlider(title: "Rows", value: gridBinding(\.rows))
+                        GridSizeSlider(title: "Columns", value: gridBinding(\.columns), end: sliderEnd.columns)
+                        GridSizeSlider(title: "Rows", value: gridBinding(\.rows), end: sliderEnd.rows)
                     }
                     Text(percentages.size)
                         .font(.callout.monospacedDigit())
@@ -193,12 +242,15 @@ struct PresetEditor: View {
                     ShortcutRecorder(key: $preset.key, store: store, placeholder: "No shortcut")
                     if store.refusedHotkeys.contains(preset.id) {
                         IssueLabel(message: "Another app already uses this shortcut. Quit it (Divvy?) or pick another.")
+                            .transition(.issue)
                     }
-                    ForEach(store.issues(for: preset.id), id: \.self) { IssueLabel(message: $0) }
+                    ForEach(store.issues(for: preset.id), id: \.self) { IssueLabel(message: $0).transition(.issue) }
                     Text("Without a shortcut, the preset is still a button in the grid panel.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+                .animation(.issue(reduceMotion), value: store.issues(for: preset.id))
+                .animation(.issue(reduceMotion), value: store.refusedHotkeys.contains(preset.id))
 
                 HStack {
                     Button("Duplicate", systemImage: "plus.square.on.square", action: onDuplicate)
@@ -254,84 +306,101 @@ struct GeneralPane: View {
     /// Read once per visit: the body is re-evaluated on every config edit, and each read asks
     /// cfprefsd for both of Divvy's preference domains.
     @State private var canImportFromDivvy = Store.hasDivvyPreferences
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Panes")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Panes")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
 
-                // First thing on the page: it's why Settings opened at launch.
-                if let loadError = store.loadError { IssueLabel(message: loadError) }
+                    // First thing on the page: it's why Settings opened at launch.
+                    if let loadError = store.loadError { IssueLabel(message: loadError) }
 
-                accessibilityCard
+                    accessibilityCard
 
-                GlassCard(title: "Grid Panel", systemImage: "square.grid.3x3") {
-                    HStack(alignment: .top, spacing: 24) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GridSizeSlider(title: "Columns", value: $store.config.grid.columns)
-                            GridSizeSlider(title: "Rows", value: $store.config.grid.rows)
-                            Toggle("Show resize preview", isOn: $store.config.showResizePreview)
-                                .toggleStyle(.trailingSwitch)
-                                .help("While you drag across the grid or hover a preset, outline where the window will land.")
-                            Toggle("Repeat a shortcut for the next screen", isOn: $store.config.cycleScreens)
-                                .toggleStyle(.trailingSwitch)
-                                .help("Press a preset's shortcut again, with the window still where it put it, to move the window to the same area of the next screen.")
-                                .padding(.bottom, 6)
-                            Text("Hotkey to open the grid for the frontmost window")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                            ShortcutRecorder(key: gridHotkey, store: store, placeholder: "Menu bar only")
-                            if store.refusedHotkeys.contains(nil) {
-                                IssueLabel(message: "Another app already uses this shortcut.")
+                    GlassCard(title: "Grid Panel", systemImage: "square.grid.3x3") {
+                        HStack(alignment: .top, spacing: 24) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                GridSizeSlider(title: "Columns", value: $store.config.grid.columns)
+                                GridSizeSlider(title: "Rows", value: $store.config.grid.rows)
+                                Toggle("Show resize preview", isOn: $store.config.showResizePreview)
+                                    .toggleStyle(.trailingSwitch)
+                                    .help("While you drag across the grid or hover a preset, outline where the window will land.")
+                                Toggle("Repeat a shortcut for the next screen", isOn: $store.config.cycleScreens)
+                                    .toggleStyle(.trailingSwitch)
+                                    .help("Press a preset's shortcut again, with the window still where it put it, to move the window to the same area of the next screen.")
+                                    .padding(.bottom, 6)
+                                Text("Hotkey to open the grid for the frontmost window")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                ShortcutRecorder(key: gridHotkey, store: store, placeholder: "Menu bar only")
+                                if store.refusedHotkeys.contains(nil) {
+                                    IssueLabel(message: "Another app already uses this shortcut.")
+                                        .transition(.issue)
+                                }
+                                ForEach(store.issues(for: nil), id: \.self) { IssueLabel(message: $0).transition(.issue) }
                             }
-                            ForEach(store.issues(for: nil), id: \.self) { IssueLabel(message: $0) }
-                        }
-                        .frame(width: 240)
+                            .frame(width: 240)
 
-                        GridSelector(columns: store.config.grid.columns, rows: store.config.grid.rows) { _ in }
-                            .aspectRatio(16 / 10, contentMode: .fit)
-                            .frame(maxWidth: 280)
-                            .allowsHitTesting(false)
-                    }
-                }
-
-                GlassCard(title: "Startup", systemImage: "power") {
-                    Toggle("Open Panes at login", isOn: $launchAtLogin)
-                        .toggleStyle(.trailingSwitch)
-                        .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
-                    if let launchError { IssueLabel(message: launchError) }
-                }
-
-                UpdatesCard(store: store, updater: updater)
-
-                GlassCard(title: "Presets File", systemImage: "doc.text") {
-                    Text(Store.fileURL.path(percentEncoded: false))
-                        .font(.callout.monospaced())
-                        .textSelection(.enabled)
-                        .foregroundStyle(.secondary)
-                    HStack {
-                        Button("Show in Finder", systemImage: "folder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([Store.fileURL])
-                        }
-                        if canImportFromDivvy {
-                            Button("Import from Divvy…", systemImage: "square.and.arrow.down") { confirmImport = true }
+                            // A picture of the grid, not a control: VoiceOver skips it.
+                            GridSelector(columns: store.config.grid.columns, rows: store.config.grid.rows) { _ in }
+                                .aspectRatio(screenAspect, contentMode: .fit)
+                                .frame(maxWidth: 280)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
                         }
                     }
-                    .buttonStyle(.glass)
-                    if let importError { IssueLabel(message: importError) }
-                    if let saveError = store.saveError { IssueLabel(message: "Couldn't save: \(saveError)") }
+                    .animation(.issue(reduceMotion), value: store.issues(for: nil))
+                    .animation(.issue(reduceMotion), value: store.refusedHotkeys.contains(nil))
+
+                    GlassCard(title: "Startup", systemImage: "power") {
+                        Toggle("Open Panes at login", isOn: $launchAtLogin)
+                            .toggleStyle(.trailingSwitch)
+                            .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
+                        if let launchError { IssueLabel(message: launchError).transition(.issue) }
+                    }
+                    .animation(.issue(reduceMotion), value: launchError)
+
+                    UpdatesCard(store: store, updater: updater)
+                        .id(Self.updatesID)
+
+                    GlassCard(title: "Presets File", systemImage: "doc.text") {
+                        Text(Store.fileURL.path(percentEncoded: false))
+                            .font(.callout.monospaced())
+                            .textSelection(.enabled)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            Button("Show in Finder", systemImage: "folder") {
+                                NSWorkspace.shared.activateFileViewerSelecting([Store.fileURL])
+                            }
+                            if canImportFromDivvy {
+                                Button("Import from Divvy…", systemImage: "square.and.arrow.down") { confirmImport = true }
+                            }
+                        }
+                        .buttonStyle(.glass)
+                        if let importError { IssueLabel(message: importError).transition(.issue) }
+                        if let saveError = store.saveError { IssueLabel(message: "Couldn't save: \(saveError)").transition(.issue) }
+                    }
+                    .animation(.issue(reduceMotion), value: importError)
+                    .animation(.issue(reduceMotion), value: store.saveError)
                 }
+                .padding(24)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
             }
-            .padding(24)
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity)
+            .scrollContentBackground(.hidden)
+            .onAppear { revealUpdates(with: scroller) }
+            .onChange(of: store.revealUpdates) { revealUpdates(with: scroller) }
         }
-        .scrollContentBackground(.hidden)
         .confirmationDialog("Replace all presets with Divvy's?", isPresented: $confirmImport) {
             Button("Replace Presets", role: .destructive) {
                 do {
-                    try store.replaceWithDivvyImport()
+                    // The biggest change the app makes: the sidebar's rows go and come rather than swap.
+                    try withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .snappy(duration: 0.3)) {
+                        try store.replaceWithDivvyImport()
+                    }
                     importError = nil
                 } catch {
                     importError = "Divvy's shortcuts couldn't be read."
@@ -342,6 +411,20 @@ struct GeneralPane: View {
         }
     }
 
+    private static let updatesID = "updates"
+
+    /// Scrolls to the Updates card when an "update available" button sent the settings here.
+    private func revealUpdates(with scroller: ScrollViewProxy) {
+        guard store.revealUpdates else { return }
+        // After this pass: on a first appearance the card isn't laid out yet.
+        DispatchQueue.main.async {
+            withAnimation(reduceMotion ? nil : .snappy) { scroller.scrollTo(Self.updatesID, anchor: .top) }
+            store.revealUpdates = false
+        }
+    }
+
+    /// Polled once a second, since granting access happens in System Settings. Turning green is the
+    /// moment Panes starts working, so it gets the one bounce in the app.
     private var accessibilityCard: some View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             let trusted = WindowMover.isTrusted
@@ -350,20 +433,30 @@ struct GeneralPane: View {
                     Image(systemName: trusted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                         .font(.title2)
                         .foregroundStyle(trusted ? .green : .orange)
+                        .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
+                        .symbolEffect(.bounce, options: .nonRepeating, value: reduceMotion ? false : trusted)
                     Text(trusted
                         ? "Panes can move windows."
                         : "Panes needs Accessibility access to move other apps' windows.")
                     Spacer()
                     if !trusted {
-                        Button("Open Settings") {
+                        Button("Open System Settings") {
                             WindowMover.requestTrust()
                             WindowMover.openAccessibilitySettings()
                         }
                         .buttonStyle(.glassProminent)
+                        .transition(.opacity)
                     }
                 }
+                .animation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.35, bounce: 0.2), value: trusted)
             }
         }
+    }
+
+    /// The main screen's shape, as the grid panel shows it.
+    private var screenAspect: CGFloat {
+        let frame = NSScreen.main?.visibleFrame ?? .init(x: 0, y: 0, width: 16, height: 10)
+        return frame.width / max(frame.height, 1)
     }
 
     private var gridHotkey: Binding<String> {
@@ -386,6 +479,24 @@ struct GeneralPane: View {
 struct UpdatesCard: View {
     @Bindable var store: Store
     let updater: Updater
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// `Updater.State` without its payloads: the card animates between these, not on every
+    /// downloaded chunk.
+    private enum Phase: Hashable {
+        case idle, checking, upToDate, failed, available, installing
+    }
+
+    private var phase: Phase {
+        switch updater.state {
+        case .idle: .idle
+        case .checking: .checking
+        case .upToDate: .upToDate
+        case .failed: .failed
+        case .available: .available
+        case .installing: .installing
+        }
+    }
 
     var body: some View {
         GlassCard(title: "Updates", systemImage: "arrow.down.circle") {
@@ -402,36 +513,42 @@ struct UpdatesCard: View {
                     .foregroundStyle(.secondary)
             }
         }
+        // The state changes from async work, so nothing else would animate it.
+        .animation(reduceMotion ? .easeOut(duration: 0.2) : .snappy(duration: 0.25), value: phase)
     }
 
     @ViewBuilder private var status: some View {
         let version = updater.currentVersion.map { "Panes \($0)" } ?? "This version"
         switch updater.state {
-        case .idle, .upToDate, .failed:
+        case .idle, .upToDate, .failed, .checking:
+            // One row through a check: only its text and the button's slot change.
             HStack(spacing: 12) {
-                if case .upToDate = updater.state {
+                switch updater.state {
+                case .upToDate:
                     Label("\(version) is the latest.", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                } else {
+                case .checking:
+                    Text("Checking…").foregroundStyle(.secondary)
+                default:
                     Text("You have \(version).").foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Check Now") { Task { await updater.check() } }
                     .buttonStyle(.glass)
+                    .disabled(phase == .checking)
+                    .opacity(phase == .checking ? 0 : 1)
+                    .overlay {
+                        if phase == .checking { ProgressView().controlSize(.small) }
+                    }
             }
-            if case let .failed(message) = updater.state { IssueLabel(message: message) }
-        case .checking:
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Checking…").foregroundStyle(.secondary)
-            }
+            if case let .failed(message) = updater.state { IssueLabel(message: message).transition(.issue) }
         case let .available(release):
             Text("Panes \(release.version.description) is available. You have \(version).")
+            let blocker = updater.installBlocker
             HStack {
-                if let blocker = updater.installBlocker {
+                if blocker != nil {
                     Button("Download", systemImage: "safari") { NSWorkspace.shared.open(release.pageURL) }
                         .buttonStyle(.glassProminent)
-                    Text(blocker).font(.callout).foregroundStyle(.secondary)
                 } else {
                     Button("Install and Relaunch", systemImage: "arrow.down.circle") {
                         Task { await updater.install(release) }
@@ -440,6 +557,10 @@ struct UpdatesCard: View {
                 }
                 Button("Release Notes") { NSWorkspace.shared.open(release.pageURL) }
                     .buttonStyle(.glass)
+            }
+            // On its own line: between the buttons, a long path wrapped to three or four.
+            if let blocker {
+                Text(blocker).font(.callout).foregroundStyle(.secondary)
             }
         case let .installing(release, step):
             let name = "Panes \(release.version.description)"
@@ -462,12 +583,14 @@ struct UpdatesCard: View {
 
 // MARK: - Controls
 
-/// A grid's column or row count, as a slider over `Config.gridSizeRange` with the count at its end.
+/// A grid's column or row count, as a slider over `Config.gridSizeRange` (or up to `end`) with the
+/// count at its end.
 struct GridSizeSlider: View {
     let title: String
     @Binding var value: Int
+    var end = Config.gridSizeRange.upperBound
 
-    private static let range = Double(Config.gridSizeRange.lowerBound)...Double(Config.gridSizeRange.upperBound)
+    private var range: ClosedRange<Double> { Double(Config.gridSizeRange.lowerBound)...Double(end) }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -475,7 +598,7 @@ struct GridSizeSlider: View {
                 // The same width for both, so stacked sliders line up.
                 .frame(width: 60, alignment: .leading)
                 .accessibilityHidden(true)
-            Slider(value: steps, in: Self.range, step: 1) { Text(title) }
+            Slider(value: steps, in: range, step: 1) { Text(title) }
                 .labelsHidden()
                 .accessibilityValue("\(value)")
             Text("\(value)")

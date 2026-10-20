@@ -26,8 +26,8 @@ presets.
   Transparency and Increase Contrast make the grid solid and its cells easier to count.
 - **Presets with global shortcuts.** Each preset is a grid area. Give it a shortcut (⌃⌥⌘← and so on)
   or leave it as a button in the grid panel.
-- **Settings window** to create, duplicate, reorder and delete presets, record shortcuts, and set the
-  grid size. Shortcut conflicts are flagged next to the preset.
+- **Settings window** to create, duplicate, reorder and delete presets (⌘Z undoes a delete), record
+  shortcuts, and set the grid size. Shortcut conflicts are flagged next to the preset.
 - **Divvy import.** Your Divvy grid size and shortcuts, including subdivided grids, are converted on
   first launch and can be re-imported from Settings.
 - **Keyboard-layout aware.** Shortcuts follow the active layout, so a Divvy shortcut stored as the

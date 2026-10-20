@@ -19,6 +19,12 @@ public struct Config: Codable, Equatable, Sendable {
             self.area = area
         }
 
+        /// The name to show: an emptied name would leave a row with nothing to read.
+        public var displayName: String {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Untitled" : name
+        }
+
         // A hand-written config may leave out `id` and `enabled`.
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -146,7 +152,7 @@ public struct Config: Codable, Equatable, Sendable {
                 if let other = seen[combo] {
                     issues.append((preset.id, "\(combo.displayString(layout: layout)) is already used by \(other)."))
                 } else {
-                    seen[combo] = "“\(preset.name)”"
+                    seen[combo] = "“\(preset.displayName)”"
                 }
             } catch {
                 issues.append((preset.id, "Shortcut: \(error)."))

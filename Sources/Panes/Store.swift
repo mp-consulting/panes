@@ -24,6 +24,9 @@ import PanesCore
     private var issuesByPreset: [UUID?: [String]] = [:]
     /// Presets whose shortcut the system refused, by id; `nil` key for the grid hotkey.
     var refusedHotkeys: Set<UUID?> = []
+    /// Set to send the settings to the Updates card, from an "update available" button; cleared
+    /// once they're there.
+    var revealUpdates = false
     /// True while a shortcut recorder listens: hotkeys are suspended so the keys reach it.
     var isRecordingShortcut = false {
         didSet { if isRecordingShortcut != oldValue { onChange?() } }
@@ -109,7 +112,7 @@ import PanesCore
     func addPreset() -> UUID {
         let grid = config.grid
         let preset = Config.Preset(
-            name: "New preset", key: "",
+            name: "New Preset", key: "",
             area: GridSelection(columns: grid.columns, rows: grid.rows,
                                 start: Cell(column: 0, row: 0), end: Cell(column: grid.columns - 1, row: grid.rows - 1))
         )
@@ -130,6 +133,11 @@ import PanesCore
 
     func deletePreset(_ id: UUID) {
         config.presets.removeAll { $0.id == id }
+    }
+
+    /// Puts a deleted preset back where it was, for undo.
+    func insertPreset(_ preset: Config.Preset, at index: Int) {
+        config.presets.insert(preset, at: min(index, config.presets.count))
     }
 
     // MARK: Divvy

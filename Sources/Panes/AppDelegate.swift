@@ -11,18 +11,22 @@ import SwiftUI
     private lazy var gridPanel = GridPanelController(
         store: store,
         updater: updater,
-        apply: { [weak self] app, selection, screen in self?.move(app, to: selection, on: screen) },
-        openSettings: { [weak self] in self?.showSettings() }
+        apply: { [weak self] app, selection, screen in self?.move(app, to: selection, on: screen) }
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.mainMenu = makeMainMenu()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "square.grid.3x3.topleft.filled", accessibilityDescription: "Panes")
             button.target = self
             button.action = #selector(statusItemClicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            // Right-click is the only way to the menu, and so to Quit.
+            button.toolTip = "Panes: click for the grid, right-click for the menu"
         }
+        // Lit while the grid is open, as a menu-bar extra is while its menu is.
+        gridPanel.visibilityChanged = { [weak self] visible in self?.statusItem.button?.highlight(visible) }
 
         HotkeyCenter.shared.install()
         store.onChange = { [weak self] in self?.registerHotkeys() }
@@ -164,10 +168,17 @@ import SwiftUI
         gridPanel.close()
         let menu = NSMenu()
         if let release = updater.availableRelease {
-            menu.addItem(withTitle: "Update to Panes \(release.version)…", action: #selector(showSettingsFromMenu), keyEquivalent: "").target = self
+            menu.addItem(withTitle: "Update to Panes \(release.version)…", action: #selector(showUpdatesFromMenu), keyEquivalent: "").target = self
             menu.addItem(.separator())
         }
-        menu.addItem(withTitle: "Show Grid", action: #selector(showGridFromMenu), keyEquivalent: "").target = self
+        let showGrid = menu.addItem(withTitle: "Show Grid", action: #selector(showGridFromMenu), keyEquivalent: "")
+        showGrid.target = self
+        // Shown, as menus teach shortcuts; it works anywhere, so it isn't only a menu equivalent.
+        if let key = store.config.gridHotkey, let combo = try? KeyCombo(parsing: key, layout: store.layout),
+           let equivalent = Self.keyEquivalent(for: combo, layout: store.layout) {
+            showGrid.keyEquivalent = equivalent
+            showGrid.keyEquivalentModifierMask = Self.modifierMask(for: combo.modifiers)
+        }
         menu.addItem(withTitle: "Settings…", action: #selector(showSettingsFromMenu), keyEquivalent: ",").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Panes", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -184,12 +195,45 @@ import SwiftUI
         showSettings()
     }
 
+    @objc private func showUpdatesFromMenu() {
+        store.revealUpdates = true
+        showSettings()
+    }
+
+    /// The menu-item equivalent of a combo's key: its character, or the function-key character for
+    /// the named keys menus can draw. `nil` for keys a menu can't show.
+    private static func keyEquivalent(for combo: KeyCombo, layout: KeyLayout) -> String? {
+        let named: [UInt32: Int] = [123: NSLeftArrowFunctionKey, 124: NSRightArrowFunctionKey,
+                                    125: NSDownArrowFunctionKey, 126: NSUpArrowFunctionKey,
+                                    116: NSPageUpFunctionKey, 121: NSPageDownFunctionKey,
+                                    115: NSHomeFunctionKey, 119: NSEndFunctionKey]
+        if let function = named[combo.keyCode], let scalar = Unicode.Scalar(function) { return String(Character(scalar)) }
+        switch combo.keyCode {
+        case 49: return " "
+        case 36: return "\r"
+        case 48: return "\t"
+        default:
+            guard let character = layout.characterForKeyCode[combo.keyCode], character.count == 1 else { return nil }
+            return character.lowercased()
+        }
+    }
+
+    private static func modifierMask(for modifiers: KeyCombo.Modifiers) -> NSEvent.ModifierFlags {
+        var mask: NSEvent.ModifierFlags = []
+        if modifiers.contains(.command) { mask.insert(.command) }
+        if modifiers.contains(.option) { mask.insert(.option) }
+        if modifiers.contains(.control) { mask.insert(.control) }
+        if modifiers.contains(.shift) { mask.insert(.shift) }
+        return mask
+    }
+
     // MARK: Settings window
 
     func showSettings() {
         if settingsWindow == nil {
+            let size = SettingsView.size(on: NSScreen.main)
             let window = NSWindow(
-                contentRect: NSRect(origin: .zero, size: SettingsView.size),
+                contentRect: NSRect(origin: .zero, size: size),
                 // Fixed size: not resizable, so no zoom or full screen either.
                 styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                 backing: .buffered, defer: false
@@ -201,7 +245,7 @@ import SwiftUI
             // inside the floating sidebar instead of onto its top edge.
             window.toolbar = NSToolbar(identifier: "PanesSettings")
             window.toolbarStyle = .unified
-            window.contentViewController = NSHostingController(rootView: SettingsView(store: store, updater: updater))
+            window.contentViewController = NSHostingController(rootView: SettingsView(store: store, updater: updater, height: size.height))
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.collectionBehavior = [.fullScreenNone]
@@ -212,6 +256,47 @@ import SwiftUI
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// The menu bar while Settings is open. Without one, ⌘Z, ⌘C, ⌘V and ⌘W had nothing to go
+    /// through: a preset deleted by mistake couldn't be undone, nor a name pasted in.
+    private func makeMainMenu() -> NSMenu {
+        let main = NSMenu()
+        func submenu(_ title: String, _ items: [NSMenuItem]) {
+            let menu = NSMenu(title: title)
+            items.forEach(menu.addItem)
+            main.addItem(withTitle: title, action: nil, keyEquivalent: "").submenu = menu
+        }
+        func item(_ title: String, _ action: Selector?, _ key: String = "", target: AnyObject? = nil) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = target
+            return item
+        }
+        let redo = item("Redo", Selector(("redo:")), "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        submenu("Panes", [
+            item("About Panes", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            .separator(),
+            item("Settings…", #selector(showSettingsFromMenu), ",", target: self),
+            .separator(),
+            item("Hide Panes", #selector(NSApplication.hide(_:)), "h"),
+            .separator(),
+            item("Quit Panes", #selector(NSApplication.terminate(_:)), "q"),
+        ])
+        submenu("Edit", [
+            item("Undo", Selector(("undo:")), "z"),
+            redo,
+            .separator(),
+            item("Cut", #selector(NSText.cut(_:)), "x"),
+            item("Copy", #selector(NSText.copy(_:)), "c"),
+            item("Paste", #selector(NSText.paste(_:)), "v"),
+            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+        ])
+        submenu("Window", [
+            item("Close", #selector(NSWindow.performClose(_:)), "w"),
+            item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+        ])
+        return main
     }
 
     func windowWillClose(_ notification: Notification) {

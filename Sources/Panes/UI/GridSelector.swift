@@ -22,12 +22,21 @@ struct GridSelector: View {
     // Liquid Glass follows these settings by itself; the grid's own translucent fills don't.
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let gap: CGFloat = 4
+    /// The space between cells, and between the cells and the bed's edge: 4pt, less on a dense
+    /// grid, where a fixed 4pt was as wide as the cells themselves.
+    private func gap(in size: CGSize) -> CGFloat {
+        let pitch = min(size.width / CGFloat(max(columns, 1)), size.height / CGFloat(max(rows, 1)))
+        return min(4, (pitch * 0.25).rounded())
+    }
 
     var body: some View {
         GeometryReader { geometry in
-            let size = geometry.size
+            let gap = gap(in: geometry.size)
+            // The cells, inside the bed: the bed fills the frame, so its edge lines up with what's
+            // around it, and its radius, 12, nests with the cells' (6) at 6pt in.
+            let size = CGSize(width: max(geometry.size.width - 2 * gap, 1), height: max(geometry.size.height - 2 * gap, 1))
             ZStack(alignment: .topLeading) {
                 // A solid-ish bed under the cells: on glass, faint cells vanish into busy wallpapers.
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -36,19 +45,22 @@ struct GridSelector: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(.primary.opacity(contrast == .increased ? 0.45 : 0.12), lineWidth: 1)
                     }
-                    .padding(-gap)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
 
                 GridCells(columns: columns, rows: rows, size: size, gap: gap, tint: tint,
                           hovered: dragging == nil ? hovered : nil, highContrast: contrast == .increased)
                     .equatable()
+                    .padding(gap)
 
                 if let shown = dragging ?? committed, shown.columns == columns, shown.rows == rows {
                     let rect = shown.frame(in: CGRect(origin: .zero, size: size)).insetBy(dx: gap / 2, dy: gap / 2)
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    // The cells' radius, so a selection's corners cover the cells' exactly.
+                    let radius = CellShapes.cornerRadius(for: rect)
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
                         .fill(tint.opacity(0.55))
-                        .glassEffect(.regular.tint(tint.opacity(0.6)), in: .rect(cornerRadius: 10))
+                        .glassEffect(.regular.tint(tint.opacity(0.6)), in: .rect(cornerRadius: radius))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: radius, style: .continuous)
                                 .strokeBorder(.white.opacity(contrast == .increased ? 0.95 : 0.55), lineWidth: 1.5)
                         }
                         .overlay {
@@ -59,12 +71,14 @@ struct GridSelector: View {
                                 .opacity(rect.width > 44 && rect.height > 24 ? 1 : 0)
                         }
                         .frame(width: max(rect.width, 0), height: max(rect.height, 0))
-                        .offset(x: rect.minX, y: rect.minY)
-                        .animation(.snappy(duration: 0.16), value: shown)
+                        .offset(x: gap + rect.minX, y: gap + rect.minY)
+                        .animation(reduceMotion ? nil : .snappy(duration: 0.16), value: shown)
                         .allowsHitTesting(false)
                 }
             }
             .contentShape(Rectangle())
+            // A selection surface, so the pointer says so.
+            .pointerStyle(.rectSelection)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
@@ -72,8 +86,8 @@ struct GridSelector: View {
                         if dragging == nil { escapeWatcher.start(cancelDrag) }
                         let selection = GridSelection(
                             columns: columns, rows: rows,
-                            start: cell(at: value.startLocation, in: size),
-                            end: cell(at: value.location, in: size)
+                            start: cell(at: value.startLocation, in: size, gap: gap),
+                            end: cell(at: value.location, in: size, gap: gap)
                         )
                         if selection != dragging { onPreview?(selection) }
                         dragging = selection
@@ -93,14 +107,14 @@ struct GridSelector: View {
                 switch phase {
                 // Only on entering another cell: every pointer move would otherwise update the view.
                 case let .active(location):
-                    let cell = cell(at: location, in: size)
+                    let cell = cell(at: location, in: size, gap: gap)
                     if cell != hovered { hovered = cell }
                 case .ended: hovered = nil
                 }
             }
         }
         .accessibilityElement()
-        .accessibilityLabel("Grid of \(columns) columns and \(rows) rows; drag to select an area")
+        .accessibilityLabel("Grid of \(columns) \(columns == 1 ? "column" : "columns") and \(rows) \(rows == 1 ? "row" : "rows"); drag to select an area")
     }
 
     private func cancelDrag() {
@@ -110,9 +124,10 @@ struct GridSelector: View {
         onCancel?()
     }
 
-    private func cell(at point: CGPoint, in size: CGSize) -> Cell {
-        let column = Int(point.x / size.width * CGFloat(columns))
-        let row = Int(point.y / size.height * CGFloat(rows))
+    /// - Parameter point: in the view, which has the bed's `gap` around the cells.
+    private func cell(at point: CGPoint, in size: CGSize, gap: CGFloat) -> Cell {
+        let column = Int((point.x - gap) / size.width * CGFloat(columns))
+        let row = Int((point.y - gap) / size.height * CGFloat(rows))
         return Cell(column: min(max(column, 0), columns - 1), row: min(max(row, 0), rows - 1))
     }
 }

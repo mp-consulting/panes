@@ -142,6 +142,15 @@ let azerty = KeyLayout(characterForKeyCode: [0: "q", 6: "w", 8: "c", 12: "a", 13
         #expect(issues[0].message == "⌃⌥← is already used by “A”.")
     }
 
+    @Test func emptyPresetNameShowsAsUntitled() {
+        let unnamed = Config.Preset(name: " ", key: "ctrl+opt+left", area: area)
+        let clash = Config.Preset(name: "B", key: "opt+ctrl+left", area: area)
+        #expect(unnamed.displayName == "Untitled")
+        #expect(Config.Preset(name: "Left", key: "", area: area).displayName == "Left")
+        let issues = Config(grid: .init(columns: 6, rows: 6), presets: [unnamed, clash]).issues(layout: .usANSI)
+        #expect(issues.map(\.message) == ["⌃⌥← is already used by “Untitled”."])
+    }
+
     @Test func presetCannotStealTheGridHotkey() {
         let config = Config(grid: .init(columns: 6, rows: 6), gridHotkey: "ctrl+opt+space",
                             presets: [.init(name: "A", key: "opt+ctrl+space", area: area)])

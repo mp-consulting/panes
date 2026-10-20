@@ -6,6 +6,42 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- ⌘Z undoes deleting a preset, and ⌘C, ⌘V and ⌘W work in Settings: Panes now has a menu bar
+  (Panes, Edit, Window) while Settings is open.
+- While recording a shortcut, the modifiers you hold show as you press them, and a refused
+  combination says why instead of only beeping.
+- The grid panel says when the front app has no window to place, and dims the grid.
+- The menu-bar icon stays highlighted while the grid is open, has a tooltip, and its menu shows
+  the grid hotkey.
+
+### Changed
+
+- The grid panel's Update button turns the card to the settings like the gear does, and every
+  "update available" button opens Settings at the Updates card.
+- The grid panel opens at once, without the window animation.
+- Warnings, update status and the Accessibility check animate in rather than jumping into place;
+  a Divvy import animates the preset list.
+- The grid's background lines up with the rest of the panel, the selection's corners match the
+  cells', and dense grids keep their cells wider than the gaps between them.
+- The pointer turns into a selection cursor over the grid.
+
+### Fixed
+
+- Leaving a shortcut recorder listening while switching to another app no longer leaves every
+  hotkey switched off.
+- The grid panel stays on screen: with many presets they scroll, a portrait screen's grid narrows
+  to fit, and the panel no longer opens or grows past the screen's edges.
+- Settings fit screens shorter than 620pt.
+- Clicking the back or gear button while the card is still turning turns it again once it lands,
+  instead of sizing the panel from the middle of the turn.
+- A preset imported with a grid finer than 24 (a subdivided Divvy grid) keeps it: its sliders go
+  up to its size instead of shrinking it when touched.
+- With more than three screens, the screen icons narrow so the header fits; screens with the same
+  name are numbered; the icons have no dead gaps between them.
+- A preset with an empty name shows as "Untitled", and long names show in full in a tooltip.
+
 ## [1.5.2] - 2026-10-20
 
 ### Changed
