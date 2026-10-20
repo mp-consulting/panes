@@ -441,10 +441,20 @@ struct UpdatesCard: View {
                 Button("Release Notes") { NSWorkspace.shared.open(release.pageURL) }
                     .buttonStyle(.glass)
             }
-        case let .installing(release):
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Downloading and checking Panes \(release.version.description)…").foregroundStyle(.secondary)
+        case let .installing(release, step):
+            let name = "Panes \(release.version.description)"
+            switch step {
+            case let .downloading(received, expected) where expected > 0:
+                ProgressView(value: Double(received), total: Double(expected)) {
+                    Text("Downloading \(name)…")
+                } currentValueLabel: {
+                    Text("\(received.formatted(.byteCount(style: .file))) of \(expected.formatted(.byteCount(style: .file)))")
+                        .monospacedDigit()
+                }
+            case .downloading:
+                ProgressView { Text("Downloading \(name)…") }.progressViewStyle(.linear)
+            case .verifying:
+                ProgressView { Text("Checking and installing \(name)…") }.progressViewStyle(.linear)
             }
         }
     }

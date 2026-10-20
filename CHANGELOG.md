@@ -6,6 +6,11 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Installing an update shows a progress bar with how much of the download has arrived, then a
+  bar while the download is checked and installed.
+
 ## [1.4.2] - 2026-10-15
 
 ### Changed

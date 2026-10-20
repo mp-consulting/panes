@@ -1,6 +1,7 @@
 import AppKit
 import PanesCore
 import Security
+import Synchronization
 
 /// Checks GitHub once a day for a newer release, and installs it when asked.
 ///
@@ -14,8 +15,14 @@ import Security
         case checking
         case upToDate
         case available(Release)
-        case installing(Release)
+        case installing(Release, InstallStep)
         case failed(String)
+    }
+
+    enum InstallStep: Equatable {
+        /// `expected` is 0 while the size is unknown.
+        case downloading(received: Int64, expected: Int64)
+        case verifying
     }
 
     private(set) var state: State = .idle
@@ -105,12 +112,25 @@ import Security
 
     func install(_ release: Release) async {
         guard installBlocker == nil else { return }
-        state = .installing(release)
+        state = .installing(release, .downloading(received: 0, expected: 0))
         do {
-            try await Self.installUpdate(release, over: Bundle.main.bundleURL)
+            try await Self.installUpdate(release, over: Bundle.main.bundleURL) { [weak self] step in
+                Task { @MainActor in self?.advance(release, to: step) }
+            }
             relaunch()
         } catch {
             state = .failed("Couldn't install Panes \(release.version): \(error.localizedDescription)")
+        }
+    }
+
+    /// Byte counts arrive from URLSession's threads and may land out of order, so they never move
+    /// the bar back, nor undo the step after the download.
+    private func advance(_ release: Release, to step: InstallStep) {
+        guard case let .installing(current, currentStep) = state, current == release else { return }
+        switch (currentStep, step) {
+        case (.verifying, _): return
+        case let (.downloading(had, _), .downloading(received, _)) where received < had: return
+        default: state = .installing(release, step)
         }
     }
 
@@ -121,15 +141,19 @@ import Security
         init(_ message: String) { errorDescription = message }
     }
 
-    @concurrent private nonisolated static func installUpdate(_ release: Release, over app: URL) async throws {
+    @concurrent private nonisolated static func installUpdate(
+        _ release: Release, over app: URL, progress: @escaping @Sendable (InstallStep) -> Void
+    ) async throws {
         let files = FileManager.default
         // On the app's volume, so the final swap is a rename rather than a copy. Resolved, because
         // diskutil only knows a mount point by its real path (/private/var/…, not /var/…).
         let work = realPath(try files.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: app, create: true))
         defer { try? files.removeItem(at: work) }
 
-        let (download, response) = try await URLSession.shared.download(from: release.diskImageURL)
+        let observer = DownloadObserver { progress(.downloading(received: $0, expected: max($1, 0))) }
+        let (download, response) = try await URLSession.shared.download(from: release.diskImageURL, delegate: observer)
         try expectOK(response)
+        progress(.verifying)
         let image = work.appending(path: "Panes.dmg")
         try files.moveItem(at: download, to: image)
         guard satisfies(image, diskImageRequirement) else {
@@ -209,6 +233,24 @@ import Security
         else { return false }
         let checks = flags.union([.checkAllArchitectures, .strictValidate])
         return SecStaticCodeCheckValidity(code, checks, compiled) == errSecSuccess
+    }
+}
+
+/// Reports a download's byte counts. The task's own `didWriteData` callback never reaches a delegate
+/// passed to the async `download(from:delegate:)`, but the task itself can be watched once it exists.
+private final class DownloadObserver: NSObject, URLSessionTaskDelegate, Sendable {
+    private let onBytes: @Sendable (_ received: Int64, _ expected: Int64) -> Void
+    private let observation = Mutex<NSKeyValueObservation?>(nil)
+
+    init(onBytes: @escaping @Sendable (Int64, Int64) -> Void) {
+        self.onBytes = onBytes
+    }
+
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        let watch = task.observe(\.countOfBytesReceived) { [onBytes] task, _ in
+            onBytes(task.countOfBytesReceived, task.countOfBytesExpectedToReceive)
+        }
+        observation.withLock { $0 = watch }
     }
 }
 
