@@ -6,6 +6,8 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-10-20
+
 ### Changed
 
 - The resize preview fades out when it goes away, as it fades in, instead of vanishing.
@@ -132,7 +134,8 @@ All notable changes to Panes are listed here. The format follows
 - Configuration saved as JSON in `~/Library/Application Support/Panes/config.json`.
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
 
-[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.5.2...HEAD
+[1.5.2]: https://github.com/mp-consulting/panes/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/mp-consulting/panes/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/mp-consulting/panes/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/mp-consulting/panes/compare/v1.4.1...v1.4.2
