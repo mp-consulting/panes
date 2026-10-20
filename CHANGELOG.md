@@ -117,7 +117,7 @@ All notable changes to Panes are listed here. The format follows
 - Configuration saved as JSON in `~/Library/Application Support/Panes/config.json`.
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
 
-[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.5.0...HEAD
 [1.5.0]: https://github.com/mp-consulting/panes/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/mp-consulting/panes/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/mp-consulting/panes/compare/v1.4.0...v1.4.1
