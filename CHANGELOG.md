@@ -6,6 +6,11 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- When another account on the Mac updates Panes, the running copy offers to relaunch into the new
+  version instead of offering the same update again.
+
 ## [1.6.2] - 2026-10-21
 
 ### Fixed

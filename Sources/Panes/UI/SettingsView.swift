@@ -484,7 +484,7 @@ struct UpdatesCard: View {
     /// `Updater.State` without its payloads: the card animates between these, not on every
     /// downloaded chunk.
     private enum Phase: Hashable {
-        case idle, checking, upToDate, failed, available, installing
+        case idle, checking, upToDate, failed, available, installing, installedElsewhere
     }
 
     private var phase: Phase {
@@ -495,6 +495,7 @@ struct UpdatesCard: View {
         case .failed: .failed
         case .available: .available
         case .installing: .installing
+        case .installedElsewhere: .installedElsewhere
         }
     }
 
@@ -580,6 +581,10 @@ struct UpdatesCard: View {
             case .verifying:
                 ProgressView { Text("Checking and installing \(name)…") }.progressViewStyle(.linear)
             }
+        case let .installedElsewhere(installed):
+            Text("Panes \(installed.description) was installed by another account on this Mac. You have \(version).")
+            Button("Relaunch", systemImage: "arrow.clockwise") { updater.relaunchIntoInstalledVersion() }
+                .buttonStyle(.glassProminent)
         }
     }
 }
