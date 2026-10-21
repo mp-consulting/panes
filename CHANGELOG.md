@@ -6,6 +6,16 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-10-21
+
+### Fixed
+
+- Updates work when another account on the Mac installed Panes. The app in Applications belongs to
+  whoever installed or last updated it, and other accounts were offered the update, then saw it fail
+  at the last step. Panes now asks for an administrator's password in that case and checks the
+  signature again before swapping the app in as root. Every install also leaves the app writable by
+  the `admin` group, so the next update needs no password from any administrator account.
+
 ## [1.6.1] - 2026-10-20
 
 ### Fixed
@@ -179,7 +189,8 @@ All notable changes to Panes are listed here. The format follows
 - Configuration saved as JSON in `~/Library/Application Support/Panes/config.json`.
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
 
-[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/mp-consulting/panes/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/mp-consulting/panes/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/mp-consulting/panes/compare/v1.5.2...v1.6.0
 [1.5.2]: https://github.com/mp-consulting/panes/compare/v1.5.1...v1.5.2
