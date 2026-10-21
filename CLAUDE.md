@@ -34,7 +34,9 @@ Never create a `.build/` in the repo. `install` replaces the running app, so ask
   Accessibility API.
 - `System/Updater` checks GitHub's latest release daily and installs it on request. A download carries
   no quarantine flag, so its code-signing requirements (notarized image, team 4HWBUF2R8D, identifier
-  `com.mpconsulting.Panes`) are the only gate: never loosen them. Release parsing lives in
+  `com.mpconsulting.Panes`) are the only gate: never loosen them. When another account owns the installed
+  app, the swap runs as root through `osascript … with administrator privileges`, which re-checks the
+  signature on a root-owned copy first. Release parsing lives in
   `PanesCore/Update.swift`.
 
 ## Pitfalls

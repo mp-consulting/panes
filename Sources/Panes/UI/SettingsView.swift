@@ -561,6 +561,9 @@ struct UpdatesCard: View {
             // On its own line: between the buttons, a long path wrapped to three or four.
             if let blocker {
                 Text(blocker).font(.callout).foregroundStyle(.secondary)
+            } else if updater.needsAdministrator {
+                Text("Panes was installed by another account, so installing asks for an administrator's password.")
+                    .font(.callout).foregroundStyle(.secondary)
             }
         case let .installing(release, step):
             let name = "Panes \(release.version.description)"
