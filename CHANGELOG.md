@@ -6,6 +6,8 @@ All notable changes to Panes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-10-22
+
 ### Changed
 
 - When another account on the Mac updates Panes, the running copy offers to relaunch into the new
@@ -194,7 +196,8 @@ All notable changes to Panes are listed here. The format follows
 - Configuration saved as JSON in `~/Library/Application Support/Panes/config.json`.
 - Release workflow that builds, signs, notarizes and attaches a DMG to each published GitHub release.
 
-[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/mp-consulting/panes/compare/v1.6.3...HEAD
+[1.6.3]: https://github.com/mp-consulting/panes/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/mp-consulting/panes/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/mp-consulting/panes/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/mp-consulting/panes/compare/v1.5.2...v1.6.0
